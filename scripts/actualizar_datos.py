@@ -138,12 +138,16 @@ def fmt(x, d):
 def procesar(sym, name, ex, d):
     ts = d.get("timestamp") or []
     q = d["indicators"]["quote"][0]
-    pts = [(t, c, v) for t, c, v in zip(ts, q["close"], q["volume"]) if c is not None]
+    pts = [(t, c, v, o, h, l) for t, c, v, o, h, l in zip(ts, q["close"], q["volume"], q.get("open") or [None] * len(ts),
+                                                       q.get("high") or [None] * len(ts), q.get("low") or [None] * len(ts)) if c is not None]
     if len(pts) < N + 40:
         return None
     t = [p[0] for p in pts]
     c = [p[1] for p in pts]
     vol = [p[2] or 0 for p in pts]
+    op = [p[3] if p[3] is not None else p[1] for p in pts]
+    hi = [max(x for x in (p[4], p[3], p[1]) if x is not None) for p in pts]
+    lo = [min(x for x in (p[5], p[3], p[1]) if x is not None) for p in pts]
     price = d["meta"].get("regularMarketPrice") or c[-1]
     if price < MIN_PRICE:
         return None
@@ -174,7 +178,7 @@ def procesar(sym, name, ex, d):
         "divEstado": ("Confirmada" if hace >= 3 else "En formación") if div != "Ninguna" else "",
         "volusd": round(sum(vol[-20:]) / 20 * c[-1]),
         "_ts": t[-N:],
-        "s_close": ser(c, dc), "s_rsi": ser(R, 0), "s_macd": ser(macd, 3), "s_sig": ser(sg, 3),
+        "s_open": ser(op, dc), "s_high": ser(hi, dc), "s_low": ser(lo, dc), "s_close": ser(c, dc), "s_rsi": ser(R, 0), "s_macd": ser(macd, 3), "s_sig": ser(sg, 3),
     }
 
 
@@ -215,7 +219,7 @@ def main():
     ref = next(f for f in filas if f["date"] == ultima)
     fechas = [{"i": i, "fecha": str(dt.datetime.fromtimestamp(x, dt.timezone.utc).date())} for i, x in enumerate(ref["_ts"])]
 
-    S = ["s_close", "s_rsi", "s_macd", "s_sig"]
+    S = ["s_open", "s_high", "s_low", "s_close", "s_rsi", "s_macd", "s_sig"]
     resumen = [{k: v for k, v in f.items() if k not in S and k != "_ts"} for f in filas]
     series = [{"sym": f["sym"], **{k: f[k] for k in S}} for f in filas]
 

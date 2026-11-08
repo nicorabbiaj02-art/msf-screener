@@ -165,6 +165,7 @@
     if (!s || !S.fechas) { if (!S.ser) return; box.replaceChildren(el('div', 'msf-load msf-err', 'Sin datos de gráfico para esta acción.')); return; }
     box.replaceChildren();
     const c = parse(s.s_close), R = parse(s.s_rsi), m = parse(s.s_macd), g = parse(s.s_sig);
+    const o = s.s_open ? parse(s.s_open) : c, hi = s.s_high ? parse(s.s_high) : c, lo = s.s_low ? parse(s.s_low) : c;
     const hst = m.map((v, i) => v - g[i]), n = c.length;
     const dates = S.fechas.slice(-n).map((d) => toDate(d.fecha));
     const W = Math.max(280, box.clientWidth - 12 || 600);
@@ -178,7 +179,7 @@
     const pFmt = c[n - 1] < 1 ? num.format('.4f') : c[n - 1] < 10 ? num.format('.2f') : num.format(',.0f');
     const mExt = d3.max([...m, ...g, ...hst].map(Math.abs)) || 1;
     const mFmt = num.format(mExt < 0.1 ? '.3f' : mExt < 10 ? '.2f' : ',.0f');
-    const cMin = d3.min(c), cMax = d3.max(c), pad = (cMax - cMin) * 0.08 || cMax * 0.02;
+    const cMin = d3.min(lo), cMax = d3.max(hi), pad = (cMax - cMin) * 0.08 || cMax * 0.02;
     P[0].y = d3.scaleLinear([cMin - pad, cMax + pad], [P[0].top + P[0].h, P[0].top]).nice(4); P[0].fmt = pFmt;
     P[1].y = d3.scaleLinear([0, 100], [P[1].top + P[1].h, P[1].top]); P[1].fmt = num.format('d'); P[1].ticks = [30, 50, 70];
     P[2].y = d3.scaleLinear([-mExt * 1.1, mExt * 1.1], [P[2].top + P[2].h, P[2].top]).nice(4); P[2].fmt = mFmt;
@@ -201,15 +202,20 @@
       parts.forEach(([txt, col], i) => t.append('tspan').attr('dx', i ? 10 : 0).attr('fill', col || 'var(--msf-text)').attr('font-weight', i ? 400 : 700).text(txt));
     };
 
-    // Precio
-    const gid = 'msfg' + Math.random().toString(36).slice(2, 7);
-    const grad = svg.append('defs').append('linearGradient').attr('id', gid).attr('x1', 0).attr('x2', 0).attr('y1', 0).attr('y2', 1);
-    [[0, .32], [.25, .18], [.5, .09], [.75, .03], [1, 0]].forEach(([o, a]) => grad.append('stop').attr('offset', o).attr('style', `stop-color:#22d3ee;stop-opacity:${a}`));
+    // Precio: velas japonesas (verde alcista, rojo bajista)
     const p0 = P[0];
-    svg.append('path').attr('d', d3.area((d, i) => x(i), p0.top + p0.h, (d) => p0.y(d))(c)).attr('fill', `url(#${gid})`);
-    svg.append('path').attr('d', line(c, p0.y)).attr('fill', 'none').attr('stroke', 'var(--msf-cyan)').attr('stroke-width', 2).attr('stroke-linecap', 'round').attr('stroke-linejoin', 'round')
-      .style('filter', 'drop-shadow(0 0 4px rgba(34,211,238,.55))');
-    title(p0, [['Precio'], ['60 ruedas', 'var(--msf-muted)']]);
+    const step = (x(n - 1) - x(0)) / Math.max(1, n - 1);
+    const cw = Math.max(2, Math.min(14, step * 0.68));
+    const velas = svg.append('g');
+    d3.range(n).forEach((i) => {
+      const up = c[i] >= o[i], col = up ? ok : bad;
+      velas.append('line').attr('x1', x(i)).attr('x2', x(i)).attr('y1', p0.y(hi[i])).attr('y2', p0.y(lo[i]))
+        .attr('stroke', col).attr('stroke-width', 1.2);
+      const y1 = p0.y(Math.max(o[i], c[i])), y2 = p0.y(Math.min(o[i], c[i]));
+      velas.append('rect').attr('x', x(i) - cw / 2).attr('width', cw).attr('y', y1).attr('height', Math.max(1, y2 - y1))
+        .attr('fill', col).attr('stroke', col).attr('stroke-width', 0.8).attr('rx', 0.8);
+    });
+    title(p0, [['Precio'], ['Velas diarias · 60 ruedas', 'var(--msf-muted)']]);
 
     // RSI
     const p1 = P[1];
@@ -221,12 +227,13 @@
     // Divergencia
     if (r.divA >= 0 && r.divB >= 0 && r.divB < n) {
       const col = r.div === 'Alcista' ? ok : bad;
-      [[p0.y, c], [p1.y, R]].forEach(([y, arr]) => {
+      const ext = r.div === 'Alcista' ? lo : hi;
+      [[p0.y, ext], [p1.y, R]].forEach(([y, arr]) => {
         svg.append('line').attr('x1', x(r.divA)).attr('x2', x(r.divB)).attr('y1', y(arr[r.divA])).attr('y2', y(arr[r.divB]))
           .attr('stroke', col).attr('stroke-width', 2.5).attr('stroke-linecap', 'round');
         [r.divA, r.divB].forEach((i) => svg.append('circle').attr('cx', x(i)).attr('cy', y(arr[i])).attr('r', 3.5).attr('fill', col));
       });
-      svg.append('text').attr('x', Math.min(x(r.divB), W - mr - 40)).attr('y', p0.y(c[r.divB]) + (r.div === 'Alcista' ? 16 : -10)).attr('text-anchor', 'middle')
+      svg.append('text').attr('x', Math.min(x(r.divB), W - mr - 40)).attr('y', p0.y(ext[r.divB]) + (r.div === 'Alcista' ? 16 : -10)).attr('text-anchor', 'middle')
         .attr('font-size', 11).attr('font-weight', 700).attr('fill', col).text('Div. ' + r.div.toLowerCase());
     }
 
@@ -257,11 +264,12 @@
         const [px] = d3.pointer(ev, svg.node());
         const i = Math.max(0, Math.min(n - 1, Math.round(x.invert(px))));
         rule.attr('x1', x(i)).attr('x2', x(i)).attr('opacity', 1);
-        [[P[0].y(c[i]), 'var(--msf-cyan)'], [P[1].y(R[i]), 'var(--msf-sky)'], [P[2].y(m[i]), 'var(--msf-cyan)']]
-          .forEach(([cy, col], k) => dots[k].attr('cx', x(i)).attr('cy', cy).attr('fill', col).attr('opacity', 1));
+        [[P[0].y(c[i]), c[i] >= o[i] ? 'var(--msf-up)' : 'var(--msf-down)'], [P[1].y(R[i]), 'var(--msf-sky)'], [P[2].y(m[i]), 'var(--msf-cyan)']]
+          .forEach(([cy, col], k) => dots[k].attr('cx', x(i)).attr('cy', cy).attr('fill', col).attr('opacity', k === 0 ? 0 : 1));
         tip.selectAll('*').remove();
         tip.append('div').attr('class', 't').text(fLong(dates[i]));
-        [['#22d3ee', 'Precio', price(c[i])], ['#38bdf8', 'RSI', dec(R[i], 0)], ['#22d3ee', 'MACD', mFmt(m[i])], ['#fbbf24', 'Señal', mFmt(g[i])], [hst[i] >= 0 ? css('--msf-up') : css('--msf-down'), 'Histograma', mFmt(hst[i])]]
+        const vc = c[i] >= o[i] ? css('--msf-up') : css('--msf-down');
+        [[vc, 'Apertura', price(o[i])], [vc, 'Máximo', price(hi[i])], [vc, 'Mínimo', price(lo[i])], [vc, 'Cierre', price(c[i])], ['#38bdf8', 'RSI', dec(R[i], 0)], ['#22d3ee', 'MACD', mFmt(m[i])], ['#fbbf24', 'Señal', mFmt(g[i])], [hst[i] >= 0 ? css('--msf-up') : css('--msf-down'), 'Histograma', mFmt(hst[i])]]
           .forEach(([col, k, v]) => { const d = tip.append('div'); d.append('i').style('background', col); d.append('span').text(k + ': ' + v); });
         const rect = box.getBoundingClientRect(), scale = rect.width / W;
         const tw = tip.node().offsetWidth, left = x(i) * scale;
@@ -275,8 +283,9 @@
     S.sel = sym;
     renderDetalle();
     $$('#filas tr').forEach((tr) => tr.classList.toggle('sel', tr.dataset.key === sym));
-    const top = $('#detalle').getBoundingClientRect().top;
-    if (top < 0 || top > window.innerHeight * 0.6) $('#detalle').scrollIntoView({behavior: 'smooth', block: 'start'});
+    const det = $('#detalle');
+    det.scrollIntoView({behavior: 'smooth', block: 'start'});
+    det.classList.remove('flash'); void det.offsetWidth; det.classList.add('flash');
     try { history.replaceState(null, '', '#' + sym); } catch (e) { /* nada */ }
   }
   function redraw() { S.limit = 100; renderLista(); if (!S.sel) renderDetalle(); }
