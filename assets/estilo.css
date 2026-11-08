@@ -142,3 +142,9 @@ body{padding:clamp(8px,2.5vw,28px)}
 .tvwrap .tradingview-widget-container__widget{height:100%}
 #perfil .msf-note b{color:var(--msf-text)}
 @media (max-width:640px){.tvwrap{height:520px}}
+
+/* Nexo con la terminal fundamental */
+.d-links{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end}
+.fundbtn{background:rgba(34,211,238,.08)!important;color:var(--msf-cyan)!important;box-shadow:0 0 0 1px var(--msf-cyan) inset,0 0 16px rgba(34,211,238,.25)!important}
+.fchip{display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;margin-left:6px;border-radius:5px;background:var(--msf-cyan);color:#03111f;font:700 10.5px/1 system-ui,sans-serif;text-decoration:none;vertical-align:1px}
+.fchip:hover{filter:brightness(1.15)}

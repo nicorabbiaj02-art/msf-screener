@@ -35,7 +35,17 @@ def get(url, timeout=30):
 
 
 # ---------- 1. Universo ----------
-BAD = re.compile(r"\b(Warrants?|Rights?|Units?|Preferred|Depositary Shares? Representing|Notes?|Debentures?|Subordinated|Perpetual|% )", re.I)
+# \b al final: sin él, «Units?» excluía a UnitedHealth, United Airlines, etc., y «Notes?» a cualquier nombre que empezara así.
+BAD = re.compile(r"\b(Warrants?|Rights?|Units?|Preferred|Depositary Shares? Representing|Notes?|Debentures?|Subordinated|Perpetual)\b|%", re.I)
+BAD_ADR = re.compile(r"\b(Warrants?|Rights?|Units?|Notes?|Debentures?|Subordinated|Perpetual)\b|%", re.I)
+CLASE = re.compile(r"^[A-Z]{1,5}\.[A-Z]$")  # acciones de clase, p. ej. BRK.B o BF.B
+
+
+def excluir(name):
+    """Los ADR de acciones preferidas (ITUB, PBR.A…) son acciones comunes para el inversor: no se excluyen por «Preferred»."""
+    if re.search(r"American Depositary|\bADS\b|\bADR\b", name, re.I):
+        return bool(BAD_ADR.search(name))
+    return bool(BAD.search(name))
 
 
 def universo():
@@ -46,7 +56,7 @@ def universo():
         if len(p) < 8 or p[0].startswith("File"):
             continue
         sym, name, _, test, _, _, etf = p[:7]
-        if test == "Y" or etf == "Y" or BAD.search(name):
+        if test == "Y" or etf == "Y" or excluir(name):
             continue
         out.append((sym, name.strip(), "NASDAQ"))
     oth = get("https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt").decode("utf-8", "replace")
@@ -56,7 +66,7 @@ def universo():
         if len(p) < 8 or p[0].startswith("File"):
             continue
         sym, name, ex, _, etf, _, test = p[:7]
-        if test == "Y" or etf == "Y" or BAD.search(name) or "$" in sym or "." in sym:
+        if test == "Y" or etf == "Y" or excluir(name) or "$" in sym or ("." in sym and not CLASE.match(sym)):
             continue
         out.append((sym, name.strip(), exm.get(ex, "NYSE")))
     return out
@@ -64,7 +74,7 @@ def universo():
 
 # ---------- 2. Precios ----------
 def bajar(sym):
-    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{sym}?range=1y&interval=1d"
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{sym.replace('.', '-')}?range=1y&interval=1d"  # Yahoo usa BRK-B
     for intento in range(3):
         try:
             return json.loads(get(url, 20))["chart"]["result"][0]

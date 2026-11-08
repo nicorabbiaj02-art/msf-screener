@@ -45,6 +45,11 @@ Vercel se conecta al mismo repo de GitHub y vuelve a publicar la página cada ve
 
 Si preferís usar **solo Vercel**, podés saltear el paso de GitHub Pages (Settings → Pages). El paso *publicar* del workflow va a figurar con error, pero la actualización de datos sigue funcionando y Vercel publica igual.
 
+## Nexo con la Terminal de Análisis Fundamental
+
+- Las acciones que también están en la [terminal fundamental](https://terminal-fundamental-etf.vercel.app) muestran una **F** al lado del ticker y el botón **Ver análisis fundamental** en el detalle. La lista sale de `https://terminal-fundamental-etf.vercel.app/universo.json`.
+- La terminal muestra el análisis técnico de cada empresa con los datos de este screener y enlaza acá con `https://msf-screener.vercel.app/#TICKER`, que abre directamente el detalle de esa acción.
+
 ## Estructura
 
 ```

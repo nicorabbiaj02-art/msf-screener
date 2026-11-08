@@ -24,6 +24,15 @@
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
   const badge = (t) => el('span', 'badge b-' + t, t);
   const css = (n) => getComputedStyle($('.msf')).getPropertyValue(n).trim();
+  // ---------- Nexo con la Terminal de Análisis Fundamental (Entrenando tus Finanzas) ----------
+  const TERMINAL = 'https://terminal-fundamental-etf.vercel.app';
+  let UNIV = null; // tickers con ficha fundamental
+  const fundUrl = (sym) => TERMINAL + '/#empresa-' + sym.toLowerCase().replace(/\./g, '-');
+  fetch(TERMINAL + '/universo.json').then((r) => r.ok ? r.json() : null).then((j) => {
+    if (!j || !j.empresas) return;
+    UNIV = new Set(Object.keys(j.empresas));
+    if (S.rows) { renderLista(); renderDetalle(); }
+  }).catch(() => { /* sin nexo: la página funciona igual */ });
 
   // ---------- Filtros ----------
   function filtered() {
@@ -105,7 +114,9 @@
       const tr = el('tr'); tr.dataset.key = r.sym;
       if (cur && r.sym === cur.sym) tr.className = 'sel';
       const td = (cls) => { const c = el('td', cls); tr.append(c); return c; };
-      td().append(el('span', 'tk', r.sym), el('span', 'nm', r.name));
+      const c0 = td(); c0.append(el('span', 'tk', r.sym));
+      if (UNIV && UNIV.has(r.sym)) { const f = el('a', 'fchip', 'F'); f.href = fundUrl(r.sym); f.target = '_blank'; f.rel = 'noopener'; f.title = 'Ver análisis fundamental de ' + r.sym; c0.append(f); }
+      c0.append(el('span', 'nm', r.name));
       td('n').textContent = price(r.price);
       td('n ' + (r.chg >= 0 ? 'up' : 'down')).textContent = pct(r.chg);
       td('n').append(el('span', 'rsi-chip ' + (r.rsi < 30 ? 'rsi-lo' : r.rsi > 70 ? 'rsi-hi' : ''), dec(r.rsi, 1)));
@@ -146,6 +157,7 @@
     $('#d-senal').replaceChildren(badge(r.senal));
     $('#d-div').replaceChildren(badge(r.div));
     $('#d-tv').href = tv(r);
+    const fb = $('#d-fund'); fb.hidden = !(UNIV && UNIV.has(r.sym)); if (!fb.hidden) { fb.href = fundUrl(r.sym); fb.setAttribute('aria-label', 'Ver el análisis fundamental de ' + r.sym); }
     $('#d-tv').setAttribute('aria-label', 'Ver ' + r.sym + ' en TradingView');
     let t = 'MACD ' + (r.senal === 'Compra' ? 'por encima' : 'por debajo') + ' de su señal: cruzó ' + (r.dias === 1 ? 'en la última rueda' : 'hace ' + r.dias + ' ruedas') + '. ';
     if (S.fechas && r.div !== 'Ninguna') {
@@ -333,6 +345,7 @@
     const h = decodeURIComponent(location.hash.slice(1)).toUpperCase();
     if (h && rows.some((r) => r.sym === h)) S.sel = h;
     renderResumen(); renderLista(); renderDetalle();
+    if (S.sel) requestAnimationFrame(() => $('#detalle').scrollIntoView({block: 'start'})); // llegó con #TICKER (p. ej. desde la terminal fundamental)
     return get('data/acciones_series.json');
   }).then((ser) => {
     S.ser = new Map(ser.map((r) => [r.sym, r]));
