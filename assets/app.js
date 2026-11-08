@@ -172,22 +172,37 @@
     renderPerfil(r);
   }
 
-  // ---------- Perfil de la empresa (widget de TradingView) ----------
+  // ---------- Widgets de TradingView ----------
   function tvSymbol(r) { return (['NASDAQ', 'NYSE', 'AMEX'].includes(r.ex) ? r.ex + ':' : '') + r.sym; }
-  function renderPerfil(r) {
-    const box = $('#tv-perfil'); if (!box) return;
-    const sym = tvSymbol(r);
-    if (box.dataset.sym === sym) return;
-    box.dataset.sym = sym;
-    $('#perfil-sym').textContent = r.name.replace(/ - .*$/, '');
+  function tvWidget(box, file, config) {
     const cont = el('div', 'tradingview-widget-container');
     cont.append(el('div', 'tradingview-widget-container__widget'));
     const sc = document.createElement('script');
     sc.type = 'text/javascript'; sc.async = true;
-    sc.src = 'https://s3.tradingview.com/external-embedding/embed-widget-symbol-profile.js';
-    sc.textContent = JSON.stringify({width: '100%', height: '100%', colorTheme: 'dark', isTransparent: true, symbol: sym, locale: 'es'});
+    sc.src = 'https://s3.tradingview.com/external-embedding/' + file;
+    sc.textContent = JSON.stringify(config);
     cont.append(sc);
     box.replaceChildren(cont);
+  }
+  function renderPerfil(r) {
+    const sym = tvSymbol(r);
+    const chart = $('#tv-chart');
+    if (chart && chart.dataset.sym !== sym) {
+      chart.dataset.sym = sym;
+      tvWidget(chart, 'embed-widget-advanced-chart.js', {
+        autosize: true, symbol: sym, interval: 'D', timezone: 'America/Argentina/Buenos_Aires',
+        theme: 'dark', style: '1', locale: 'es', withdateranges: true, range: '12M',
+        allow_symbol_change: true, hide_side_toolbar: false, save_image: true, calendar: false,
+        backgroundColor: 'rgba(3, 9, 22, 1)', gridColor: 'rgba(120, 160, 220, 0.08)',
+        studies: ['STD;RSI', 'STD;MACD'], support_host: 'https://www.tradingview.com',
+      });
+    }
+    const box = $('#tv-perfil');
+    if (box && box.dataset.sym !== sym) {
+      box.dataset.sym = sym;
+      $('#perfil-sym').textContent = r.name.replace(/ - .*$/, '');
+      tvWidget(box, 'embed-widget-symbol-profile.js', {width: '100%', height: '100%', colorTheme: 'dark', isTransparent: true, symbol: sym, locale: 'es'});
+    }
   }
 
   function renderGraficos(r) {
