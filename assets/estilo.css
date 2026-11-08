@@ -137,3 +137,8 @@ body{padding:clamp(8px,2.5vw,28px)}
 #detalle{scroll-margin-top:12px}
 #detalle.flash{animation:msfflash 1.1s ease-out}
 @keyframes msfflash{0%{box-shadow:0 0 0 2px var(--msf-cyan),0 0 30px rgba(34,211,238,.55)}100%{box-shadow:0 0 0 0 transparent}}
+.tvwrap{height:440px;margin-top:var(--cds-gap-md);border-radius:12px;overflow:hidden;background:rgba(3,9,22,.55);border:1px solid var(--msf-line)}
+.tvwrap .tradingview-widget-container{height:100%}
+.tvwrap .tradingview-widget-container__widget{height:100%}
+#perfil .msf-note b{color:var(--msf-text)}
+@media (max-width:640px){.tvwrap{height:520px}}

@@ -157,6 +157,25 @@
     } else if (r.div === 'Ninguna') t += 'Sin divergencia RSI en las últimas 10 jornadas.';
     $('#d-txt').textContent = t;
     renderGraficos(r);
+    renderPerfil(r);
+  }
+
+  // ---------- Perfil de la empresa (widget de TradingView) ----------
+  function tvSymbol(r) { return (['NASDAQ', 'NYSE', 'AMEX'].includes(r.ex) ? r.ex + ':' : '') + r.sym; }
+  function renderPerfil(r) {
+    const box = $('#tv-perfil'); if (!box) return;
+    const sym = tvSymbol(r);
+    if (box.dataset.sym === sym) return;
+    box.dataset.sym = sym;
+    $('#perfil-sym').textContent = r.name.replace(/ - .*$/, '');
+    const cont = el('div', 'tradingview-widget-container');
+    cont.append(el('div', 'tradingview-widget-container__widget'));
+    const sc = document.createElement('script');
+    sc.type = 'text/javascript'; sc.async = true;
+    sc.src = 'https://s3.tradingview.com/external-embedding/embed-widget-symbol-profile.js';
+    sc.textContent = JSON.stringify({width: '100%', height: '100%', colorTheme: 'dark', isTransparent: true, symbol: sym, locale: 'es'});
+    cont.append(sc);
+    box.replaceChildren(cont);
   }
 
   function renderGraficos(r) {
