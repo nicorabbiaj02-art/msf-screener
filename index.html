@@ -12,6 +12,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="assets/estilo.css">
 <script src="assets/d3.min.js"></script>
+<script src="assets/lightweight-charts.js"></script>
 </head>
 <body>
 <div class="msf">
@@ -51,17 +52,10 @@
       <span>Divergencia <span id="d-div">—</span></span>
     </div>
     <p class="d-txt" id="d-txt">—</p>
-    <div class="tvwrap tvchart" id="tv-chart"></div>
-    <h3 class="msf-sub-h">Señales MSF · últimas 60 ruedas</h3>
-    <p class="msf-note">Las divergencias que detecta el screener, marcadas sobre el precio y el RSI.</p>
-    <div class="gwrap" id="graficos"><div class="msf-load">Cargando gráficos…</div></div>
+    <p class="msf-note lw-hint">Velas diarias del último año con RSI 14 y MACD 12/26/9. Arrastrá para moverte en el tiempo, usá la rueda o pellizcá para hacer zoom, y doble clic en un eje para reajustarlo.</p>
+    <div class="gwrap lw-box" id="graficos"><div class="msf-load">Cargando gráfico…</div></div>
   </section>
 
-  <section class="msf-card" id="perfil">
-    <h2>Perfil de la empresa</h2>
-    <p class="msf-note">Descripción, sector, industria y empleados de <b id="perfil-sym">—</b>, según TradingView.</p>
-    <div class="tvwrap" id="tv-perfil"></div>
-  </section>
 
   <section class="msf-card" id="lista">
     <h2>Todas las acciones</h2>

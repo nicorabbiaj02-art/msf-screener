@@ -169,159 +169,141 @@
     } else if (r.div === 'Ninguna') t += 'Sin divergencia RSI en las últimas 10 jornadas.';
     $('#d-txt').textContent = t;
     renderGraficos(r);
-    renderPerfil(r);
   }
 
-  // ---------- Widgets de TradingView ----------
-  function tvSymbol(r) { return (['NASDAQ', 'NYSE', 'AMEX'].includes(r.ex) ? r.ex + ':' : '') + r.sym; }
-  function tvWidget(box, file, config) {
-    const cont = el('div', 'tradingview-widget-container');
-    cont.append(el('div', 'tradingview-widget-container__widget'));
-    const sc = document.createElement('script');
-    sc.type = 'text/javascript'; sc.async = true;
-    sc.src = 'https://s3.tradingview.com/external-embedding/' + file;
-    sc.textContent = JSON.stringify(config);
-    cont.append(sc);
-    box.replaceChildren(cont);
+  // ---------- Gráfico principal: Lightweight Charts (TradingView) ----------
+  const HIST = new Map();
+  let CH = null; // {chart, sym}
+  const C = {up: '#34d399', down: '#fb7185', cyan: '#22d3ee', sky: '#38bdf8', amber: '#fbbf24', muted: '#8ea8cc', grid: 'rgba(120,160,220,0.07)', line: 'rgba(56,189,248,0.25)'};
+
+  function emaJs(x, n, start) {
+    const o = new Array(x.length).fill(null), k = 2 / (n + 1);
+    if (x.length < start + n) return o;
+    let s = 0; for (let i = start; i < start + n; i++) s += x[i];
+    s /= n; o[start + n - 1] = s;
+    for (let i = start + n; i < x.length; i++) { s = x[i] * k + s * (1 - k); o[i] = s; }
+    return o;
   }
-  function renderPerfil(r) {
-    const sym = tvSymbol(r);
-    const chart = $('#tv-chart');
-    if (chart && chart.dataset.sym !== sym) {
-      chart.dataset.sym = sym;
-      tvWidget(chart, 'embed-widget-advanced-chart.js', {
-        autosize: true, symbol: sym, interval: 'D', timezone: 'America/Argentina/Buenos_Aires',
-        theme: 'dark', style: '1', locale: 'es', withdateranges: true, range: '12M',
-        allow_symbol_change: true, hide_side_toolbar: false, save_image: true, calendar: false,
-        backgroundColor: 'rgba(3, 9, 22, 1)', gridColor: 'rgba(120, 160, 220, 0.08)',
-        studies: ['STD;RSI', 'STD;MACD'], support_host: 'https://www.tradingview.com',
-      });
+  function rsiJs(c, n = 14) {
+    const o = new Array(c.length).fill(null); if (c.length <= n) return o;
+    let g = 0, l = 0;
+    for (let i = 1; i <= n; i++) { const d = c[i] - c[i - 1]; g += Math.max(d, 0); l += Math.max(-d, 0); }
+    g /= n; l /= n; o[n] = l === 0 ? 100 : 100 - 100 / (1 + g / l);
+    for (let i = n + 1; i < c.length; i++) {
+      const d = c[i] - c[i - 1]; g = (g * (n - 1) + Math.max(d, 0)) / n; l = (l * (n - 1) + Math.max(-d, 0)) / n;
+      o[i] = l === 0 ? 100 : 100 - 100 / (1 + g / l);
     }
-    const box = $('#tv-perfil');
-    if (box && box.dataset.sym !== sym) {
-      box.dataset.sym = sym;
-      $('#perfil-sym').textContent = r.name.replace(/ - .*$/, '');
-      tvWidget(box, 'embed-widget-symbol-profile.js', {width: '100%', height: '100%', colorTheme: 'dark', isTransparent: true, symbol: sym, locale: 'es'});
-    }
+    return o;
+  }
+
+  function cargarHist(sym) {
+    if (HIST.has(sym)) return HIST.get(sym);
+    const p = fetch('data/hist/' + encodeURIComponent(sym) + '.json' + v).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); });
+    HIST.set(sym, p); p.catch(() => HIST.delete(sym));
+    return p;
   }
 
   function renderGraficos(r) {
-    const box = $('#graficos');
-    const s = r && S.ser && S.ser.get(r.sym);
-    if (!s || !S.fechas) { if (!S.ser) return; box.replaceChildren(el('div', 'msf-load msf-err', 'Sin datos de gráfico para esta acción.')); return; }
+    const box = $('#graficos'); if (!box || !r) return;
+    if (CH && CH.sym === r.sym) return;
+    const sym = r.sym;
+    cargarHist(sym).then((h) => {
+      if (selRow() && selRow().sym !== sym) return; // ya eligieron otra
+      dibujar(box, r, h);
+    }).catch(() => {
+      if (CH) { CH.chart.remove(); CH = null; }
+      box.replaceChildren(el('div', 'msf-load msf-err', 'No se pudo cargar la historia de ' + sym + '.'));
+    });
+  }
+
+  function dibujar(box, r, h) {
+    const LW = window.LightweightCharts;
+    if (CH) { CH.chart.remove(); CH = null; }
     box.replaceChildren();
-    const c = parse(s.s_close), R = parse(s.s_rsi), m = parse(s.s_macd), g = parse(s.s_sig);
-    const o = s.s_open ? parse(s.s_open) : c, hi = s.s_high ? parse(s.s_high) : c, lo = s.s_low ? parse(s.s_low) : c;
-    const hst = m.map((v, i) => v - g[i]), n = c.length;
-    const dates = S.fechas.slice(-n).map((d) => toDate(d.fecha));
-    const W = Math.max(280, box.clientWidth - 12 || 600);
-    const P = [{h: 190}, {h: 110}, {h: 130}];
-    const head = 22, gap = 14, axisH = 22;
-    let yy = 0; P.forEach((p) => { p.top = yy + head; yy = p.top + p.h + gap; });
-    const H = yy - gap + axisH;
-    const svg = d3.select(box).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`).style('overflow', 'visible');
-    const ok = 'var(--msf-up)', bad = 'var(--msf-down)';
+    const legend = el('div', 'lw-legend'); const area = el('div', 'lw-area');
+    box.append(area, legend);
+    const n = h.c.length, T = h.d.map((d) => d * 86400);
+    const R = rsiJs(h.c), e12 = emaJs(h.c, 12, 0), e26 = emaJs(h.c, 26, 0);
+    const M = e12.map((a, i) => a != null && e26[i] != null ? a - e26[i] : null);
+    const st = M.findIndex((x) => x != null), G = emaJs(M.map((x) => x ?? 0), 9, st);
+    const pf = r.price < 1 ? 4 : 2;
 
-    const pFmt = c[n - 1] < 1 ? num.format('.4f') : c[n - 1] < 10 ? num.format('.2f') : num.format(',.0f');
-    const mExt = d3.max([...m, ...g, ...hst].map(Math.abs)) || 1;
-    const mFmt = num.format(mExt < 0.1 ? '.3f' : mExt < 10 ? '.2f' : ',.0f');
-    const cMin = d3.min(lo), cMax = d3.max(hi), pad = (cMax - cMin) * 0.08 || cMax * 0.02;
-    P[0].y = d3.scaleLinear([cMin - pad, cMax + pad], [P[0].top + P[0].h, P[0].top]).nice(4); P[0].fmt = pFmt;
-    P[1].y = d3.scaleLinear([0, 100], [P[1].top + P[1].h, P[1].top]); P[1].fmt = num.format('d'); P[1].ticks = [30, 50, 70];
-    P[2].y = d3.scaleLinear([-mExt * 1.1, mExt * 1.1], [P[2].top + P[2].h, P[2].top]).nice(4); P[2].fmt = mFmt;
-
-    const meas = svg.append('text').attr('font-size', 11);
-    let mr = 0;
-    P.forEach((p) => (p.ticks || p.y.ticks(4)).forEach((t) => { meas.text(p.fmt(t)); mr = Math.max(mr, meas.node().getComputedTextLength()); }));
-    meas.remove(); mr += 12;
-    const x = d3.scaleLinear([0, n - 1], [4, W - mr - 6]);
-    const line = (arr, y) => d3.line((d, i) => x(i), (d) => y(d))(arr);
-
-    P.forEach((p) => {
-      const ticks = p.ticks || p.y.ticks(4), gg = svg.append('g');
-      gg.selectAll('line').data(ticks).join('line').attr('x1', x(0)).attr('x2', x(n - 1)).attr('y1', (t) => p.y(t)).attr('y2', (t) => p.y(t)).attr('stroke', 'var(--msf-grid)');
-      gg.selectAll('text').data(ticks).join('text').attr('x', W - mr + 6).attr('y', (t) => p.y(t)).attr('dy', '0.32em')
-        .attr('font-size', 11).attr('fill', 'var(--msf-muted)').text((t) => p.fmt(t));
+    const chart = LW.createChart(area, {
+      autoSize: true,
+      layout: {background: {type: 'solid', color: '#030916'}, textColor: C.muted, fontFamily: 'Inter, system-ui, sans-serif', fontSize: 11,
+        panes: {separatorColor: C.line, separatorHoverColor: 'rgba(34,211,238,0.35)', enableResize: true}, attributionLogo: true},
+      grid: {vertLines: {color: C.grid}, horzLines: {color: C.grid}},
+      rightPriceScale: {borderColor: C.line},
+      timeScale: {borderColor: C.line, rightOffset: 4, barSpacing: 8, minBarSpacing: 2},
+      crosshair: {mode: LW.CrosshairMode.Normal, vertLine: {color: 'rgba(150,190,240,0.5)', labelBackgroundColor: '#0b1d44'}, horzLine: {color: 'rgba(150,190,240,0.5)', labelBackgroundColor: '#0b1d44'}},
+      localization: {locale: 'es-AR', priceFormatter: (p) => num.format(',.' + pf + 'f')(p)},
     });
-    const title = (p, parts) => {
-      const t = svg.append('text').attr('x', x(0)).attr('y', p.top - 8).attr('font-size', 12);
-      parts.forEach(([txt, col], i) => t.append('tspan').attr('dx', i ? 10 : 0).attr('fill', col || 'var(--msf-text)').attr('font-weight', i ? 400 : 700).text(txt));
-    };
+    // Panel 0: velas + volumen
+    const velas = chart.addSeries(LW.CandlestickSeries, {upColor: C.up, downColor: C.down, borderUpColor: C.up, borderDownColor: C.down, wickUpColor: C.up, wickDownColor: C.down,
+      priceFormat: {type: 'price', precision: pf, minMove: pf === 4 ? 0.0001 : 0.01}});
+    velas.setData(T.map((t, i) => ({time: t, open: h.o[i], high: h.h[i], low: h.l[i], close: h.c[i]})));
+    const vol = chart.addSeries(LW.HistogramSeries, {priceScaleId: 'vol', priceFormat: {type: 'volume'}, lastValueVisible: false, priceLineVisible: false});
+    chart.priceScale('vol').applyOptions({scaleMargins: {top: 0.82, bottom: 0}, visible: false});
+    vol.setData(T.map((t, i) => ({time: t, value: h.v ? h.v[i] : 0, color: h.c[i] >= h.o[i] ? 'rgba(52,211,153,0.25)' : 'rgba(251,113,133,0.25)'})));
+    velas.priceScale().applyOptions({scaleMargins: {top: 0.08, bottom: 0.2}});
 
-    // Precio: velas japonesas (verde alcista, rojo bajista)
-    const p0 = P[0];
-    const step = (x(n - 1) - x(0)) / Math.max(1, n - 1);
-    const cw = Math.max(2, Math.min(14, step * 0.68));
-    const velas = svg.append('g');
-    d3.range(n).forEach((i) => {
-      const up = c[i] >= o[i], col = up ? ok : bad;
-      velas.append('line').attr('x1', x(i)).attr('x2', x(i)).attr('y1', p0.y(hi[i])).attr('y2', p0.y(lo[i]))
-        .attr('stroke', col).attr('stroke-width', 1.2);
-      const y1 = p0.y(Math.max(o[i], c[i])), y2 = p0.y(Math.min(o[i], c[i]));
-      velas.append('rect').attr('x', x(i) - cw / 2).attr('width', cw).attr('y', y1).attr('height', Math.max(1, y2 - y1))
-        .attr('fill', col).attr('stroke', col).attr('stroke-width', 0.8).attr('rx', 0.8);
-    });
-    title(p0, [['Precio'], ['Velas diarias · 60 ruedas', 'var(--msf-muted)']]);
+    // Panel 1: RSI
+    const rsiS = chart.addSeries(LW.LineSeries, {color: C.sky, lineWidth: 2, priceLineVisible: false, lastValueVisible: true, priceFormat: {type: 'price', precision: 1, minMove: 0.1}}, 1);
+    rsiS.setData(T.map((t, i) => R[i] == null ? {time: t} : {time: t, value: R[i]}));
+    rsiS.createPriceLine({price: 70, color: C.down, lineWidth: 1, lineStyle: LW.LineStyle.Dashed, axisLabelVisible: true, title: ''});
+    rsiS.createPriceLine({price: 30, color: C.up, lineWidth: 1, lineStyle: LW.LineStyle.Dashed, axisLabelVisible: true, title: ''});
+    rsiS.priceScale().applyOptions({scaleMargins: {top: 0.08, bottom: 0.08}});
+    rsiS.applyOptions({autoscaleInfoProvider: () => ({priceRange: {minValue: 0, maxValue: 100}})});
 
-    // RSI
-    const p1 = P[1];
-    svg.append('rect').attr('x', x(0)).attr('width', x(n - 1) - x(0)).attr('y', p1.y(70)).attr('height', p1.y(30) - p1.y(70)).attr('fill', 'var(--msf-blue)').attr('opacity', 0.1);
-    [30, 70].forEach((v) => svg.append('line').attr('x1', x(0)).attr('x2', x(n - 1)).attr('y1', p1.y(v)).attr('y2', p1.y(v)).attr('stroke', v === 30 ? ok : bad).attr('stroke-dasharray', '4 3').attr('opacity', 0.7));
-    svg.append('path').attr('d', line(R, p1.y)).attr('fill', 'none').attr('stroke', 'var(--msf-sky)').attr('stroke-width', 2).attr('stroke-linejoin', 'round');
-    title(p1, [['RSI 14'], [dec(r.rsi, 1), r.rsi < 30 ? ok : r.rsi > 70 ? bad : 'var(--msf-sky)']]);
+    // Panel 2: MACD
+    const histS = chart.addSeries(LW.HistogramSeries, {priceLineVisible: false, lastValueVisible: false, priceFormat: {type: 'price', precision: 3, minMove: 0.001}}, 2);
+    histS.setData(T.map((t, i) => M[i] == null || G[i] == null ? {time: t} : {time: t, value: M[i] - G[i], color: M[i] - G[i] >= 0 ? 'rgba(52,211,153,0.55)' : 'rgba(251,113,133,0.55)'}));
+    const macdS = chart.addSeries(LW.LineSeries, {color: C.cyan, lineWidth: 2, priceLineVisible: false, lastValueVisible: true, priceFormat: {type: 'price', precision: 3, minMove: 0.001}}, 2);
+    macdS.setData(T.map((t, i) => M[i] == null ? {time: t} : {time: t, value: M[i]}));
+    const sigS = chart.addSeries(LW.LineSeries, {color: C.amber, lineWidth: 1.5, priceLineVisible: false, lastValueVisible: true, priceFormat: {type: 'price', precision: 3, minMove: 0.001}}, 2);
+    sigS.setData(T.map((t, i) => G[i] == null ? {time: t} : {time: t, value: G[i]}));
 
-    // Divergencia
-    if (r.divA >= 0 && r.divB >= 0 && r.divB < n) {
-      const col = r.div === 'Alcista' ? ok : bad;
-      const ext = r.div === 'Alcista' ? lo : hi;
-      [[p0.y, ext], [p1.y, R]].forEach(([y, arr]) => {
-        svg.append('line').attr('x1', x(r.divA)).attr('x2', x(r.divB)).attr('y1', y(arr[r.divA])).attr('y2', y(arr[r.divB]))
-          .attr('stroke', col).attr('stroke-width', 2.5).attr('stroke-linecap', 'round');
-        [r.divA, r.divB].forEach((i) => svg.append('circle').attr('cx', x(i)).attr('cy', y(arr[i])).attr('r', 3.5).attr('fill', col));
-      });
-      svg.append('text').attr('x', Math.min(x(r.divB), W - mr - 40)).attr('y', p0.y(ext[r.divB]) + (r.div === 'Alcista' ? 16 : -10)).attr('text-anchor', 'middle')
-        .attr('font-size', 11).attr('font-weight', 700).attr('fill', col).text('Div. ' + r.div.toLowerCase());
+    // Divergencia: línea sobre mínimos/máximos y sobre el RSI, con marcador
+    const div = h.div;
+    if (div && r.div !== 'Ninguna' && div[0] >= 0 && div[1] < n) {
+      const [a, b] = div, alc = r.div === 'Alcista', col = alc ? C.up : C.down, ext = alc ? h.l : h.h;
+      const opt = {color: col, lineWidth: 3, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false, pointMarkersVisible: true};
+      chart.addSeries(LW.LineSeries, opt, 0).setData([{time: T[a], value: ext[a]}, {time: T[b], value: ext[b]}]);
+      chart.addSeries(LW.LineSeries, opt, 1).setData([{time: T[a], value: R[a]}, {time: T[b], value: R[b]}]);
+      if (LW.createSeriesMarkers) LW.createSeriesMarkers(velas, [{time: T[b], position: alc ? 'belowBar' : 'aboveBar', color: col, shape: alc ? 'arrowUp' : 'arrowDown', text: 'Div. ' + r.div.toLowerCase()}]);
     }
 
-    // MACD
-    const p2 = P[2], bw = Math.max(1.5, Math.min(10, (x(n - 1) - x(0)) / n - 1.5));
-    svg.append('line').attr('x1', x(0)).attr('x2', x(n - 1)).attr('y1', p2.y(0)).attr('y2', p2.y(0)).attr('stroke', 'var(--msf-axis)');
-    svg.append('g').selectAll('rect').data(hst).join('rect')
-      .attr('x', (d, i) => x(i) - bw / 2).attr('width', bw).attr('rx', 1)
-      .attr('y', (d) => Math.min(p2.y(d), p2.y(0))).attr('height', (d) => Math.max(0.5, Math.abs(p2.y(d) - p2.y(0))))
-      .attr('fill', (d) => d >= 0 ? ok : bad).attr('opacity', 0.5);
-    svg.append('path').attr('d', line(m, p2.y)).attr('fill', 'none').attr('stroke', 'var(--msf-cyan)').attr('stroke-width', 2);
-    svg.append('path').attr('d', line(g, p2.y)).attr('fill', 'none').attr('stroke', 'var(--msf-amber)').attr('stroke-width', 1.5);
-    title(p2, [['MACD 12/26/9'], ['● MACD', 'var(--msf-cyan)'], ['● Señal', 'var(--msf-amber)'], [r.senal, r.senal === 'Compra' ? ok : bad]]);
+    // Alturas de los paneles: precio grande, RSI y MACD más chicos
+    const panes = chart.panes();
+    [5, 1.7, 1.9].forEach((f, k) => { if (panes[k] && panes[k].setStretchFactor) panes[k].setStretchFactor(f); });
 
-    // Eje de fechas
-    const nt = Math.max(2, Math.min(6, Math.floor((x(n - 1) - x(0)) / 80)));
-    const tix = d3.range(nt).map((k) => Math.round(k * (n - 1) / (nt - 1)));
-    svg.append('g').selectAll('text').data(tix).join('text').attr('x', (i) => x(i)).attr('y', H - 6)
-      .attr('text-anchor', (i, k) => k === 0 ? 'start' : k === tix.length - 1 ? 'end' : 'middle')
-      .attr('font-size', 11).attr('fill', 'var(--msf-muted)').text((i) => fDay(dates[i]));
+    // Arranca mostrando los últimos ~6 meses; se puede arrastrar para ver todo el año
+    chart.timeScale().setVisibleLogicalRange({from: Math.max(0, n - 125), to: n + 3});
 
-    // Tooltip
-    const rule = svg.append('line').attr('y1', P[0].top).attr('y2', P[2].top + P[2].h).attr('stroke', 'var(--msf-ref)').attr('opacity', 0);
-    const dots = P.map(() => svg.append('circle').attr('r', 3.5).attr('opacity', 0));
-    const tip = d3.select(box).append('div').attr('class', 'gtip').style('opacity', 0);
-    svg.append('rect').attr('x', x(0)).attr('width', x(n - 1) - x(0)).attr('y', 0).attr('height', H).attr('fill', 'transparent')
-      .on('pointermove', (ev) => {
-        const [px] = d3.pointer(ev, svg.node());
-        const i = Math.max(0, Math.min(n - 1, Math.round(x.invert(px))));
-        rule.attr('x1', x(i)).attr('x2', x(i)).attr('opacity', 1);
-        [[P[0].y(c[i]), c[i] >= o[i] ? 'var(--msf-up)' : 'var(--msf-down)'], [P[1].y(R[i]), 'var(--msf-sky)'], [P[2].y(m[i]), 'var(--msf-cyan)']]
-          .forEach(([cy, col], k) => dots[k].attr('cx', x(i)).attr('cy', cy).attr('fill', col).attr('opacity', k === 0 ? 0 : 1));
-        tip.selectAll('*').remove();
-        tip.append('div').attr('class', 't').text(fLong(dates[i]));
-        const vc = c[i] >= o[i] ? css('--msf-up') : css('--msf-down');
-        [[vc, 'Apertura', price(o[i])], [vc, 'Máximo', price(hi[i])], [vc, 'Mínimo', price(lo[i])], [vc, 'Cierre', price(c[i])], ['#38bdf8', 'RSI', dec(R[i], 0)], ['#22d3ee', 'MACD', mFmt(m[i])], ['#fbbf24', 'Señal', mFmt(g[i])], [hst[i] >= 0 ? css('--msf-up') : css('--msf-down'), 'Histograma', mFmt(hst[i])]]
-          .forEach(([col, k, v]) => { const d = tip.append('div'); d.append('i').style('background', col); d.append('span').text(k + ': ' + v); });
-        const rect = box.getBoundingClientRect(), scale = rect.width / W;
-        const tw = tip.node().offsetWidth, left = x(i) * scale;
-        tip.style('left', (left + 12 + tw > rect.width ? left - tw - 12 : left + 12) + 'px').style('top', '4px').style('opacity', 1);
-      })
-      .on('pointerleave', () => { rule.attr('opacity', 0); dots.forEach((d) => d.attr('opacity', 0)); tip.style('opacity', 0); });
+    // Leyenda con OHLC, RSI y MACD bajo el cursor
+    const fecha = (t) => fLong(new Date(t * 1000));
+    const fill = (i) => {
+      const up = h.c[i] >= h.o[i], col = up ? C.up : C.down;
+      legend.replaceChildren();
+      const row1 = el('div', 'lw-row');
+      row1.append(el('b', 'lw-sym', r.sym), el('span', 'lw-date', fecha(T[i])));
+      const row2 = el('div', 'lw-row');
+      [['A', h.o[i]], ['Máx', h.h[i]], ['Mín', h.l[i]], ['C', h.c[i]]].forEach(([k, val]) => {
+        const s = el('span', null, k + ' '); s.append(Object.assign(el('b', null, num.format(',.' + pf + 'f')(val)), {style: 'color:' + col})); row2.append(s);
+      });
+      const row3 = el('div', 'lw-row');
+      if (R[i] != null) { const s = el('span', null, 'RSI '); s.append(Object.assign(el('b', null, dec(R[i], 1)), {style: 'color:' + C.sky})); row3.append(s); }
+      if (M[i] != null && G[i] != null) {
+        const s = el('span', null, 'MACD '); s.append(Object.assign(el('b', null, num.format('.3~f')(M[i])), {style: 'color:' + C.cyan})); row3.append(s);
+        const s2 = el('span', null, 'Señal '); s2.append(Object.assign(el('b', null, num.format('.3~f')(G[i])), {style: 'color:' + C.amber})); row3.append(s2);
+      }
+      legend.append(row1, row2, row3);
+    };
+    fill(n - 1);
+    const idx = new Map(T.map((t, i) => [t, i]));
+    chart.subscribeCrosshairMove((p) => { fill(p && p.time != null && idx.has(p.time) ? idx.get(p.time) : n - 1); });
+
+    CH = {chart, sym: r.sym};
   }
 
   // ---------- Interacción ----------
@@ -350,7 +332,6 @@
     $$('th[data-k]').forEach((t) => { if (t.dataset.k === S.sort) t.setAttribute('aria-sort', S.dir > 0 ? 'ascending' : 'descending'); else t.removeAttribute('aria-sort'); });
     redraw();
   }));
-  let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => renderGraficos(selRow()), 150); });
 
   // ---------- Carga ----------
   const v = '?v=' + Math.floor(Date.now() / 3.6e6); // evita caché viejo, cambia cada hora
@@ -364,7 +345,7 @@
     return get('data/acciones_series.json');
   }).then((ser) => {
     S.ser = new Map(ser.map((r) => [r.sym, r]));
-    renderLista(); renderGraficos(selRow());
+    renderLista();
   }).catch((e) => {
     console.error(e);
     $('#filas').replaceChildren();

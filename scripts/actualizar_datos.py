@@ -14,6 +14,7 @@ import datetime as dt
 import json
 import os
 import re
+import shutil
 import sys
 import time
 import urllib.error
@@ -188,7 +189,17 @@ def procesar(sym, name, ex, d):
         "divEstado": ("Confirmada" if hace >= 3 else "En formación") if div != "Ninguna" else "",
         "volusd": round(sum(vol[-20:]) / 20 * c[-1]),
         "_ts": t[-N:],
-        "s_open": ser(op, dc), "s_high": ser(hi, dc), "s_low": ser(lo, dc), "s_close": ser(c, dc), "s_rsi": ser(R, 0), "s_macd": ser(macd, 3), "s_sig": ser(sg, 3),
+        # últimas 60 ruedas: la tabla usa RSI/MACD; la terminal fundamental también lee las velas
+        "s_open": ser(op, dc), "s_high": ser(hi, dc), "s_low": ser(lo, dc), "s_close": ser(c, dc),
+        "s_rsi": ser(R, 0), "s_macd": ser(macd, 3), "s_sig": ser(sg, 3),
+        # Historia completa (1 año) para el gráfico de velas; RSI y MACD se recalculan en el navegador
+        "_hist": {
+            "d": [x // 86400 for x in t],
+            "o": [float(fmt(x, dc)) for x in op], "h": [float(fmt(x, dc)) for x in hi],
+            "l": [float(fmt(x, dc)) for x in lo], "c": [float(fmt(x, dc)) for x in c],
+            "v": vol,
+            "div": [len(c) - N + dA, len(c) - N + dB] if div != "Ninguna" else None,
+        },
     }
 
 
@@ -230,7 +241,7 @@ def main():
     fechas = [{"i": i, "fecha": str(dt.datetime.fromtimestamp(x, dt.timezone.utc).date())} for i, x in enumerate(ref["_ts"])]
 
     S = ["s_open", "s_high", "s_low", "s_close", "s_rsi", "s_macd", "s_sig"]
-    resumen = [{k: v for k, v in f.items() if k not in S and k != "_ts"} for f in filas]
+    resumen = [{k: v for k, v in f.items() if k not in S and not k.startswith("_")} for f in filas]
     series = [{"sym": f["sym"], **{k: f[k] for k in S}} for f in filas]
 
     os.makedirs(DATA, exist_ok=True)
@@ -238,6 +249,12 @@ def main():
     dump("acciones_resumen.json", resumen)
     dump("acciones_series.json", series)
     dump("fechas.json", fechas)
+    # un archivo por acción con su último año de velas
+    hdir = os.path.join(DATA, "hist")
+    shutil.rmtree(hdir, ignore_errors=True)
+    os.makedirs(hdir)
+    for f in filas:
+        dump(os.path.join("hist", f["sym"] + ".json"), f["_hist"])
     dump("meta.json", {"cierre": ultima, "generado": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"), "acciones": len(filas)})
     print(f"Listo: {len(filas)} acciones al cierre del {ultima} en {time.time() - t0:.0f}s")
 
