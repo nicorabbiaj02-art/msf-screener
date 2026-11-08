@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="es-AR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Screener RSI + MACD — Mercados Sin Filtro</title>
+<meta name="description" content="Screener de acciones de Estados Unidos con RSI, MACD y divergencias. Mercados Sin Filtro: datos, no relato.">
+<meta name="theme-color" content="#030916">
+<link rel="icon" href="assets/logo-msf.webp" type="image/webp">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/estilo.css">
+<script src="assets/d3.min.js"></script>
+</head>
+<body>
+<div class="msf">
+  <header class="msf-head">
+    <span class="msf-logo-box"><img class="msf-logo" src="assets/logo-msf.webp" alt="Mercados Sin Filtro"></span>
+    <div class="msf-titles">
+      <p class="msf-kicker">Mercados Sin Filtro · Datos, no relato</p>
+      <h1>Screener RSI + MACD — Acciones USA</h1>
+      <p class="msf-sub"><b id="total">—</b> acciones de NYSE, NASDAQ y AMEX. Tocá una fila para ver sus gráficos y abrirla en TradingView.</p>
+    </div>
+    <span class="msf-chip">Cierre del&nbsp;<b class="fecha">—</b></span>
+  </header>
+
+  <section class="msf-tiles">
+    <div class="msf-tile ok"><span>MACD en compra</span><b id="t-compra">—</b></div>
+    <div class="msf-tile bad"><span>MACD en venta</span><b id="t-venta">—</b></div>
+    <div class="msf-tile cy"><span>Cruces MACD (≤3 ruedas)</span><b id="t-cruces">—</b></div>
+    <div class="msf-tile ok"><span>Div. alcistas · últimas 3 jornadas</span><b id="t-divA">—</b></div>
+    <div class="msf-tile bad"><span>Div. bajistas · últimas 3 jornadas</span><b id="t-divB">—</b></div>
+    <div class="msf-tile"><span>RSI &lt; 30 / RSI &gt; 70</span><b><span id="t-lo" class="lo">—</span> / <span id="t-hi" class="hi">—</span></b></div>
+  </section>
+
+  <section class="msf-card" id="detalle">
+    <div class="d-top">
+      <div class="d-id">
+        <span class="d-sym" id="d-sym">—</span>
+        <span class="d-name" id="d-name">—</span>
+      </div>
+      <div class="d-price"><b id="d-price">—</b><span id="d-chg">—</span></div>
+      <div><a class="tvbtn" id="d-tv" href="https://www.tradingview.com/" target="_blank" rel="noopener noreferrer">Ir a TradingView ↗</a></div>
+    </div>
+    <div class="d-stats">
+      <span>RSI 14<b id="d-rsi">—</b></span>
+      <span>MACD<b id="d-macd">—</b></span>
+      <span>Señal<b id="d-sig">—</b></span>
+      <span>MACD <span id="d-senal">—</span></span>
+      <span>Divergencia <span id="d-div">—</span></span>
+    </div>
+    <p class="d-txt" id="d-txt">—</p>
+    <div class="gwrap" id="graficos"><div class="msf-load">Cargando gráficos…</div></div>
+  </section>
+
+  <section class="msf-card" id="lista">
+    <h2>Todas las acciones</h2>
+    <p class="msf-note">Ordenadas por volumen operado (US$ promedio 20 ruedas). Tocá un encabezado para ordenar.</p>
+    <div class="f-row">
+      <input type="search" class="f-q" placeholder="Buscar ticker o empresa…" aria-label="Buscar">
+      <select class="dash-select f-sel" data-k="senal" aria-label="Señal MACD">
+        <option value="">MACD: todas</option><option value="Compra">MACD: compra</option><option value="Venta">MACD: venta</option>
+      </select>
+      <select class="dash-select f-sel" data-k="cruce" aria-label="Cruce reciente">
+        <option value="">Cruce: cualquiera</option><option value="1">Cruce hoy</option><option value="3">Cruce ≤ 3 ruedas</option><option value="5">Cruce ≤ 5 ruedas</option>
+      </select>
+      <select class="dash-select f-sel" data-k="div" aria-label="Divergencia RSI">
+        <option value="">Divergencia: todas</option><option value="any">Con divergencia</option><option value="Alcista">Div. alcista</option><option value="Bajista">Div. bajista</option>
+      </select>
+      <select class="dash-select f-sel" data-k="dage" aria-label="Divergencia en las últimas jornadas">
+        <option value="">Div.: últimas 10 jornadas</option><option value="0">Div.: última jornada</option><option value="1">Div.: últimas 2 jornadas</option><option value="3">Div.: últimas 3 jornadas</option><option value="5">Div.: últimas 5 jornadas</option>
+      </select>
+      <select class="dash-select f-sel" data-k="rsi" aria-label="Zona RSI">
+        <option value="">RSI: todos</option><option value="lo">RSI &lt; 30</option><option value="mid">RSI 30–70</option><option value="hi">RSI &gt; 70</option>
+      </select>
+      <select class="dash-select f-sel" data-k="liq" aria-label="Liquidez">
+        <option value="">Volumen: todos</option><option value="1000000">&gt; US$1 M/día</option><option value="10000000">&gt; US$10 M/día</option><option value="100000000">&gt; US$100 M/día</option>
+      </select>
+      <select class="dash-select f-sel" data-k="ex" aria-label="Mercado">
+        <option value="">Mercado: todos</option><option value="NASDAQ">NASDAQ</option><option value="NYSE">NYSE</option><option value="AMEX">AMEX</option>
+      </select>
+      <button class="f-btn f-reset" type="button">Limpiar filtros</button>
+    </div>
+    <p class="f-count"><b id="conteo">—</b> acciones con estos filtros</p>
+    <div class="tbox">
+      <table>
+        <thead><tr>
+          <th data-k="sym"><button type="button">Acción</button></th>
+          <th class="n" data-k="price"><button type="button">Precio</button></th>
+          <th class="n" data-k="chg"><button type="button">Var. %</button></th>
+          <th class="n" data-k="rsi"><button type="button">RSI</button></th>
+          <th>RSI 60 ruedas</th>
+          <th>MACD 60 ruedas</th>
+          <th data-k="senal"><button type="button">MACD</button></th>
+          <th class="n c-hide" data-k="dias"><button type="button">Ruedas</button></th>
+          <th data-k="div"><button type="button">Divergencia</button></th>
+          <th class="n" data-k="divHace"><button type="button">Hace</button></th>
+          <th class="n c-hide" data-k="volusd" aria-sort="descending"><button type="button">Vol. US$</button></th>
+          <th>TradingView</th>
+        </tr></thead>
+        <tbody id="filas"><tr><td colspan="12"><div class="msf-load">Cargando acciones…</div></td></tr></tbody>
+      </table>
+    </div>
+    <button class="f-btn mas" type="button" hidden>Mostrar 100 más</button>
+  </section>
+
+  <details>
+    <summary>Cómo se calcula cada señal</summary>
+    <dl>
+      <dt>RSI</dt><dd>RSI de Wilder de 14 ruedas sobre cierres diarios. Debajo de 30 = sobreventa, arriba de 70 = sobrecompra.</dd>
+      <dt>MACD</dt><dd>EMA 12 − EMA 26 de los cierres; la señal es la EMA 9 del MACD. Barras = histograma (MACD − señal).</dd>
+      <dt>Compra / Venta</dt><dd>Compra si el MACD está por encima de su señal; Venta si está por debajo. "Ruedas" cuenta las sesiones desde el último cruce.</dd>
+      <dt>Divergencia</dt><dd>Se busca un mínimo o máximo en las últimas 10 jornadas (el más bajo o alto respecto de las 3 ruedas previas; puede ser la última rueda) y se lo compara con el pivote anterior más cercano (3 ruedas a cada lado), de 5 a 45 ruedas antes. Alcista: el precio hace un mínimo más bajo y el RSI uno más alto (RSI bajo 45). Bajista: el precio hace un máximo más alto y el RSI uno más bajo (RSI sobre 55). "Hace" cuenta las jornadas desde ese último punto; si tiene menos de 3 ruedas después figura "en formación", porque todavía puede cambiar.</dd>
+      <dt>Universo</dt><dd>Acciones comunes y ADRs listados en NYSE, NASDAQ y AMEX según los directorios de Nasdaq Trader, sin ETFs, warrants, units ni preferidas; precio ≥ US$0,50 y al menos 100 ruedas de historia.</dd>
+      <dt>Datos</dt><dd>Cierres diarios de Yahoo Finance al <span class="fecha">—</span>, actualizados automáticamente cada día hábil después del cierre. No es cotización en tiempo real. Material educativo, no es recomendación de inversión.</dd>
+    </dl>
+  </details>
+  <p class="msf-foot"><b>MSF</b> · Mercados Sin Filtro · Material educativo</p>
+</div>
+<script src="assets/app.js"></script>
+</body>
+</html>

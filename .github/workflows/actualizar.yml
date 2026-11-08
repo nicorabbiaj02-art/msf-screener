@@ -1,0 +1,68 @@
+name: Actualizar datos del screener
+
+on:
+  schedule:
+    # Lunes a viernes 22:30 UTC (19:30 en Argentina), después del cierre de Wall Street
+    - cron: "30 22 * * 1-5"
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: screener-msf
+  cancel-in-progress: false
+
+jobs:
+  actualizar:
+    # Al subir cambios (push) no se recalcula, solo se publica la página
+    if: github.event_name != 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Bajar precios y calcular RSI / MACD / divergencias
+        run: python scripts/actualizar_datos.py
+      - name: Guardar los datos nuevos en el repo
+        run: |
+          git config user.name "msf-bot"
+          git config user.email "msf-bot@users.noreply.github.com"
+          git add data/
+          if git diff --cached --quiet; then
+            echo "Sin cambios"
+          else
+            git commit -m "Datos al cierre $(python -c 'import json;print(json.load(open("data/meta.json"))["cierre"])')"
+            git push
+          fi
+
+  publicar:
+    # Publica en GitHub Pages. Si usás solo Vercel, este paso puede fallar sin problema.
+    needs: actualizar
+    continue-on-error: true
+    if: always() && (needs.actualizar.result == 'success' || needs.actualizar.result == 'skipped')
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/configure-pages@v5
+      - name: Armar el sitio
+        run: |
+          mkdir _site
+          cp -r index.html assets data _site/
+          touch _site/.nojekyll
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deploy
+        uses: actions/deploy-pages@v4
