@@ -44,14 +44,6 @@
       <div class="d-price"><b id="d-price">—</b><span id="d-chg">—</span></div>
       <div class="d-links"><a class="tvbtn fundbtn" id="d-fund" href="https://terminal-fundamental-etf.vercel.app/" target="_blank" rel="noopener" hidden>Ver análisis fundamental ↗</a><a class="tvbtn" id="d-tv" href="https://www.tradingview.com/" target="_blank" rel="noopener noreferrer">Ir a TradingView ↗</a></div>
     </div>
-    <div class="d-stats">
-      <span>RSI 14<b id="d-rsi">—</b></span>
-      <span>MACD<b id="d-macd">—</b></span>
-      <span>Señal<b id="d-sig">—</b></span>
-      <span>MACD <span id="d-senal">—</span></span>
-      <span>Divergencia <span id="d-div">—</span></span>
-    </div>
-    <p class="d-txt" id="d-txt">—</p>
     <div class="tf-row">
       <div class="tf-group" role="group" aria-label="Temporalidad">
         <button type="button" class="tf-btn" data-tf="D">Diario <small>2 años</small></button>
@@ -60,8 +52,46 @@
       </div>
       <button type="button" class="tf-log" title="Escala logarítmica">Log</button>
     </div>
-    <p class="msf-note lw-hint">Velas con RSI 14 y MACD 12/26/9. Arrastrá para moverte en el tiempo, usá la rueda o pellizcá para hacer zoom, y doble clic en un eje para reajustarlo. Las divergencias se marcan en el diario.</p>
+    <p class="msf-note lw-hint">Velas con <b class="ma-e20">EMA 20</b>, <b class="ma-s50">SMA 50</b> y <b class="ma-s200">SMA 200</b>; abajo, RSI 14 y MACD 12/26/9. Arrastrá para moverte en el tiempo, usá la rueda o pellizcá para hacer zoom, y doble clic en un eje para reajustarlo. Las divergencias se marcan en el diario.</p>
     <div class="gwrap lw-box" id="graficos"><div class="msf-load">Cargando gráfico…</div></div>
+
+    <div class="d-bottom">
+      <div class="d-block">
+        <h3 class="d-h3">Momentum · RSI, MACD y divergencias</h3>
+        <div class="d-stats">
+          <span>RSI 14<b id="d-rsi">—</b></span>
+          <span>MACD<b id="d-macd">—</b></span>
+          <span>Señal<b id="d-sig">—</b></span>
+          <span>MACD <span id="d-senal">—</span></span>
+          <span>Divergencia <span id="d-div">—</span></span>
+        </div>
+        <p class="d-txt" id="d-txt">—</p>
+      </div>
+
+      <div class="d-block" id="d-tend">
+        <h3 class="d-h3">Tendencia · medias móviles <small>(diario)</small></h3>
+        <div class="tend-card">
+          <div class="tend-top"><b id="t-titulo">—</b><span id="t-badge" class="badge">—</span></div>
+          <p class="tend-desc" id="t-desc">—</p>
+        </div>
+        <div class="ma-vals">
+          <span><i class="ma-dot ma-e20"></i>EMA 20 <small>corto plazo</small><b id="t-e20">—</b></span>
+          <span><i class="ma-dot ma-s50"></i>SMA 50 <small>mediano plazo</small><b id="t-s50">—</b></span>
+          <span><i class="ma-dot ma-s200"></i>SMA 200 <small>largo plazo</small><b id="t-s200">—</b></span>
+        </div>
+        <table class="tend-tab">
+          <tbody>
+            <tr><th>Precio vs. SMA 200</th><td id="ti-p200">—</td></tr>
+            <tr><th>Distancia a la SMA 200</th><td id="ti-dist">—</td></tr>
+            <tr><th>EMA 20 vs. SMA 50</th><td id="ti-e50">—</td></tr>
+            <tr><th>SMA 50 vs. SMA 200</th><td id="ti-50200">—</td></tr>
+            <tr><th>Pendiente SMA 50</th><td id="ti-p50">—</td></tr>
+            <tr><th>Pendiente SMA 200</th><td id="ti-p200s">—</td></tr>
+          </tbody>
+        </table>
+        <p class="d-txt" id="t-cruce">—</p>
+      </div>
+    </div>
   </section>
 
 
@@ -91,6 +121,12 @@
       <select class="dash-select f-sel" data-k="ex" aria-label="Mercado">
         <option value="">Mercado: todos</option><option value="NASDAQ">NASDAQ</option><option value="NYSE">NYSE</option><option value="AMEX">AMEX</option>
       </select>
+      <select class="dash-select f-sel" data-k="tend" aria-label="Tendencia">
+        <option value="">Tendencia: todas</option><option value="Alcista fuerte">Alcista fuerte</option><option value="Alcista">Alcista</option><option value="Lateral">Lateral</option><option value="Bajista">Bajista</option>
+      </select>
+      <select class="dash-select f-sel" data-k="cruceMA" aria-label="Cruce de medias">
+        <option value="">Cruce de medias: cualquiera</option><option value="Golden Cross">Golden Cross (≤20 ruedas)</option><option value="Death Cross">Death Cross (≤20 ruedas)</option>
+      </select>
       <button class="f-btn f-reset" type="button">Limpiar filtros</button>
     </div>
     <p class="f-count"><b id="conteo">—</b> acciones con estos filtros</p>
@@ -104,13 +140,14 @@
           <th>RSI 60 ruedas</th>
           <th>MACD 60 ruedas</th>
           <th data-k="senal"><button type="button">MACD</button></th>
+          <th data-k="tend"><button type="button">Tendencia</button></th>
           <th class="n c-hide" data-k="dias"><button type="button">Ruedas</button></th>
           <th data-k="div"><button type="button">Divergencia</button></th>
           <th class="n" data-k="divHace"><button type="button">Hace</button></th>
           <th class="n c-hide" data-k="volusd" aria-sort="descending"><button type="button">Vol. US$</button></th>
           <th>TradingView</th>
         </tr></thead>
-        <tbody id="filas"><tr><td colspan="12"><div class="msf-load">Cargando acciones…</div></td></tr></tbody>
+        <tbody id="filas"><tr><td colspan="13"><div class="msf-load">Cargando acciones…</div></td></tr></tbody>
       </table>
     </div>
     <button class="f-btn mas" type="button" hidden>Mostrar 100 más</button>
@@ -123,6 +160,8 @@
       <dt>MACD</dt><dd>EMA 12 − EMA 26 de los cierres; la señal es la EMA 9 del MACD. Barras = histograma (MACD − señal).</dd>
       <dt>Compra / Venta</dt><dd>Compra si el MACD está por encima de su señal; Venta si está por debajo. "Ruedas" cuenta las sesiones desde el último cruce.</dd>
       <dt>Divergencia</dt><dd>Se busca un mínimo o máximo en las últimas 10 jornadas (el más bajo o alto respecto de las 3 ruedas previas; puede ser la última rueda) y se lo compara con el pivote anterior más cercano (3 ruedas a cada lado), de 5 a 45 ruedas antes. Alcista: el precio hace un mínimo más bajo y el RSI uno más alto (RSI bajo 45). Bajista: el precio hace un máximo más alto y el RSI uno más bajo (RSI sobre 55). "Hace" cuenta las jornadas desde ese último punto; si tiene menos de 3 ruedas después figura "en formación", porque todavía puede cambiar.</dd>
+      <dt>Medias móviles</dt><dd>EMA 20 (corto plazo), SMA 50 (mediano) y SMA 200 (largo) sobre cierres diarios. La pendiente compara la media de hoy con la de hace 10 ruedas. Golden Cross: la SMA 50 cruza hacia arriba la SMA 200; Death Cross: la cruza hacia abajo (se muestran los de las últimas 20 ruedas).</dd>
+      <dt>Tendencia</dt><dd>Alcista fuerte: precio &gt; EMA 20 &gt; SMA 50 &gt; SMA 200 con las dos pendientes positivas. Alcista: precio por encima de la SMA 50 y la SMA 200 sin alineación completa. Bajista: precio debajo de la SMA 50 y la SMA 200 con pendientes negativas. Lateral: el resto, medias sin dirección clara. Hacen falta 200 ruedas de historia.</dd>
       <dt>Universo</dt><dd>Acciones comunes y ADRs listados en NYSE, NASDAQ y AMEX según los directorios de Nasdaq Trader, sin ETFs, warrants, units ni preferidas; precio ≥ US$0,50 y al menos 100 ruedas de historia.</dd>
       <dt>Datos</dt><dd>Cierres diarios de Yahoo Finance al <span class="fecha">—</span>, actualizados automáticamente cada día hábil después del cierre. No es cotización en tiempo real. Material educativo, no es recomendación de inversión.</dd>
     </dl>

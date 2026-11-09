@@ -3,7 +3,7 @@
   'use strict';
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
-  const S = {rows: null, ser: null, fechas: null, q: '', senal: '', cruce: '', div: '', dage: '', rsi: '', liq: '', ex: '', sort: 'volusd', dir: -1, limit: 100, sel: null};
+  const S = {rows: null, ser: null, fechas: null, q: '', senal: '', cruce: '', div: '', dage: '', rsi: '', liq: '', ex: '', tend: '', cruceMA: '', sort: 'volusd', dir: -1, limit: 100, sel: null};
 
   // ---------- Formatos ----------
   const es = d3.timeFormatLocale({dateTime: '%x %X', date: '%d/%m/%Y', time: '%H:%M:%S', periods: ['AM', 'PM'],
@@ -48,6 +48,8 @@
       if (S.rsi === 'hi' && !(r.rsi > 70)) return false;
       if (S.rsi === 'mid' && (r.rsi < 30 || r.rsi > 70)) return false;
       if (S.liq && r.volusd < +S.liq) return false;
+      if (S.tend && r.tend !== S.tend) return false;
+      if (S.cruceMA && r.cruceMA !== S.cruceMA) return false;
       if (S.ex && r.ex !== S.ex) return false;
       return true;
     });
@@ -124,6 +126,7 @@
       const cr = td(), cm = td();
       if (s) { cr.append(sparkRsi(parse(s.s_rsi))); cm.append(sparkMacd(parse(s.s_macd), parse(s.s_sig))); }
       td().append(badge(r.senal));
+      td().append(tendBadge(r.tend));
       td('n c-hide').textContent = int(r.dias);
       td().append(badge(r.div));
       const ch = td('n');
@@ -168,13 +171,54 @@
         : 'Divergencia bajista (' + hace(r.divHace) + ') entre el ' + d(r.divA) + ' y el ' + d(r.divB) + ': el precio marcó un máximo más alto pero el RSI uno más bajo.' + est;
     } else if (r.div === 'Ninguna') t += 'Sin divergencia RSI en las últimas 10 jornadas.';
     $('#d-txt').textContent = t;
+    renderTendencia(r);
     renderGraficos(r);
+  }
+
+  // ---------- Módulo de tendencias (medias móviles, diario) ----------
+  const TEND = {
+    'Alcista fuerte': ['Tendencia alcista fuerte', 'Alcista', 'Precio > EMA 20 > SMA 50 > SMA 200, con pendientes positivas.'],
+    'Alcista': ['Tendencia alcista', 'Positiva', 'Precio por encima de la SMA 200 y la SMA 50, aunque sin alineación completa.'],
+    'Lateral': ['Tendencia lateral', 'Neutral', 'Medias sin dirección clara y precio oscilando alrededor de ellas.'],
+    'Bajista': ['Tendencia bajista', 'Negativa', 'Precio debajo de la SMA 200 y la SMA 50, con pendientes negativas.'],
+    'Sin datos': ['Sin historia suficiente', 'Sin datos', 'Hacen falta al menos 200 ruedas para calcular la SMA 200.'],
+  };
+  const tcls = (t) => ({'Alcista fuerte': 't-fuerte', 'Alcista': 't-alc', 'Lateral': 't-lat', 'Bajista': 't-baj'})[t] || 't-nd';
+  function tendBadge(t) { return el('span', 'badge ' + tcls(t), t || 'Sin datos'); }
+  function chip(txt, good) { return el('span', 'tchip ' + (good == null ? '' : good ? 'g' : 'b'), txt); }
+  function renderTendencia(r) {
+    const k = TEND[r.tend] ? r.tend : 'Sin datos', [tit, lab, desc] = TEND[k];
+    $('#t-titulo').textContent = tit;
+    const b = $('#t-badge'); b.textContent = lab; b.className = 'badge ' + tcls(k);
+    $('#t-desc').textContent = desc;
+    const fp = (x) => x == null ? '—' : price(x);
+    $('#t-e20').textContent = fp(r.ema20); $('#t-s50').textContent = fp(r.sma50); $('#t-s200').textContent = fp(r.sma200);
+    const set = (id, node) => $(id).replaceChildren(node || document.createTextNode('—'));
+    set('#ti-p200', r.sma200 == null ? null : chip(r.price >= r.sma200 ? 'Encima' : 'Debajo', r.price >= r.sma200));
+    set('#ti-dist', r.dist200 == null ? null : chip(pct(r.dist200), r.dist200 >= 0));
+    set('#ti-e50', r.e20vs50 ? chip(r.e20vs50, r.e20vs50 === 'Alcista') : null);
+    set('#ti-50200', r.s50vs200 ? chip(r.s50vs200, r.s50vs200 === 'Alcista') : null);
+    set('#ti-p50', r.pend50 ? chip(r.pend50, r.pend50 === 'Positiva') : null);
+    set('#ti-p200s', r.pend200 ? chip(r.pend200, r.pend200 === 'Positiva') : null);
+    let c;
+    if (r.cruceMA === 'Golden Cross') c = 'Golden Cross ' + (r.cruceMAHace === 0 ? 'en la última rueda' : 'hace ' + r.cruceMAHace + (r.cruceMAHace === 1 ? ' rueda' : ' ruedas')) + ': la SMA 50 cruzó hacia arriba la SMA 200, señal alcista de largo plazo.';
+    else if (r.cruceMA === 'Death Cross') c = 'Death Cross ' + (r.cruceMAHace === 0 ? 'en la última rueda' : 'hace ' + r.cruceMAHace + (r.cruceMAHace === 1 ? ' rueda' : ' ruedas')) + ': la SMA 50 cruzó hacia abajo la SMA 200, señal bajista de largo plazo.';
+    else if (r.s50vs200) c = 'Sin Golden Cross ni Death Cross en las últimas 20 ruedas. La SMA 50 está ' + (r.s50vs200 === 'Alcista' ? 'por encima' : 'por debajo') + ' de la SMA 200.';
+    else c = 'Todavía no hay historia suficiente para la SMA 200.';
+    $('#t-cruce').textContent = c;
+  }
+  function smaJs(x, n) {
+    const o = new Array(x.length).fill(null); if (x.length < n) return o;
+    let s = 0; for (let i = 0; i < n; i++) s += x[i];
+    o[n - 1] = s / n;
+    for (let i = n; i < x.length; i++) { s += x[i] - x[i - n]; o[i] = s / n; }
+    return o;
   }
 
   // ---------- Gráfico principal: Lightweight Charts (TradingView) ----------
   const HIST = new Map();
   let CH = null; // {chart, sym}
-  const C = {up: '#34d399', down: '#fb7185', cyan: '#22d3ee', sky: '#38bdf8', amber: '#fbbf24', muted: '#8ea8cc', grid: 'rgba(120,160,220,0.07)', line: 'rgba(56,189,248,0.25)'};
+  const C = {e20: '#60a5fa', s50: '#4ade80', s200: '#c084fc', up: '#34d399', down: '#fb7185', cyan: '#22d3ee', sky: '#38bdf8', amber: '#fbbf24', muted: '#8ea8cc', grid: 'rgba(120,160,220,0.07)', line: 'rgba(56,189,248,0.25)'};
 
   function emaJs(x, n, start) {
     const o = new Array(x.length).fill(null), k = 2 / (n + 1);
@@ -286,6 +330,13 @@
     vol.setData(T.map((t, i) => ({time: t, value: h.v ? h.v[i] : 0, color: h.c[i] >= h.o[i] ? 'rgba(52,211,153,0.25)' : 'rgba(251,113,133,0.25)'})));
     velas.priceScale().applyOptions({scaleMargins: {top: 0.08, bottom: 0.2}});
 
+    // Medias móviles sobre el precio
+    const MA = [['EMA 20', emaJs(h.c, 20, 0), C.e20, 1.5], ['SMA 50', smaJs(h.c, 50), C.s50, 1.8], ['SMA 200', smaJs(h.c, 200), C.s200, 2]];
+    MA.forEach(([, arr, col, w]) => {
+      chart.addSeries(LW.LineSeries, {color: col, lineWidth: w, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false})
+        .setData(T.map((t, i) => arr[i] == null ? {time: t} : {time: t, value: arr[i]}));
+    });
+
     // Panel 1: RSI
     const rsiS = chart.addSeries(LW.LineSeries, {color: C.sky, lineWidth: 2, priceLineVisible: false, lastValueVisible: true, priceFormat: {type: 'price', precision: 1, minMove: 0.1}}, 1);
     rsiS.setData(T.map((t, i) => R[i] == null ? {time: t} : {time: t, value: R[i]}));
@@ -334,13 +385,15 @@
       [['A', h.o[i]], ['Máx', h.h[i]], ['Mín', h.l[i]], ['C', h.c[i]]].forEach(([k, val]) => {
         const s = el('span', null, k + ' '); s.append(Object.assign(el('b', null, fmtP(val)), {style: 'color:' + col})); row2.append(s);
       });
+      const rowMA = el('div', 'lw-row');
+      MA.forEach(([k, arr, col]) => { if (arr[i] != null) { const s = el('span', null, k + ' '); s.append(Object.assign(el('b', null, fmtP(arr[i])), {style: 'color:' + col})); rowMA.append(s); } });
       const row3 = el('div', 'lw-row');
       if (R[i] != null) { const s = el('span', null, 'RSI '); s.append(Object.assign(el('b', null, dec(R[i], 1)), {style: 'color:' + C.sky})); row3.append(s); }
       if (M[i] != null && G[i] != null) {
         const s = el('span', null, 'MACD '); s.append(Object.assign(el('b', null, num.format('.3~f')(M[i])), {style: 'color:' + C.cyan})); row3.append(s);
         const s2 = el('span', null, 'Señal '); s2.append(Object.assign(el('b', null, num.format('.3~f')(G[i])), {style: 'color:' + C.amber})); row3.append(s2);
       }
-      legend.append(row1, row2, row3);
+      legend.append(row1, row2, rowMA, row3);
     };
     fill(n - 1);
     const idx = new Map(T.map((t, i) => [t, i]));
@@ -364,7 +417,7 @@
   $$('.f-q').forEach((inp) => inp.addEventListener('input', () => { S.q = inp.value; redraw(); }));
   $$('.f-sel').forEach((sel) => sel.addEventListener('change', () => { S[sel.dataset.k] = sel.value; redraw(); }));
   $$('.f-reset').forEach((b) => b.addEventListener('click', () => {
-    ['q', 'senal', 'cruce', 'div', 'dage', 'rsi', 'liq', 'ex'].forEach((k) => { S[k] = ''; });
+    ['q', 'senal', 'cruce', 'div', 'dage', 'rsi', 'liq', 'ex', 'tend', 'cruceMA'].forEach((k) => { S[k] = ''; });
     $$('.f-q, .f-sel').forEach((e) => { e.value = ''; });
     redraw();
   }));

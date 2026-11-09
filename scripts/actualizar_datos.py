@@ -151,6 +151,58 @@ def precio(x):
     return round(x, 4 if x < 1 else 3 if x < 10 else 2)
 
 
+def sma(x, n):
+    o = [None] * len(x)
+    if len(x) < n:
+        return o
+    s = sum(x[:n])
+    o[n - 1] = s / n
+    for i in range(n, len(x)):
+        s += x[i] - x[i - n]
+        o[i] = s / n
+    return o
+
+
+PEND = 10  # la pendiente compara la media de hoy con la de hace 10 ruedas
+CRUCE_MAX = 20  # Golden / Death Cross de las últimas 20 ruedas
+
+
+def tendencias(c):
+    """Módulo de tendencias: EMA 20, SMA 50 y SMA 200 sobre cierres diarios."""
+    e20, s50, s200 = ema(c, 20), sma(c, 50), sma(c, 200)
+    p = c[-1]
+    out = {"ema20": None, "sma50": None, "sma200": None, "dist200": None, "pend50": "", "pend200": "",
+           "e20vs50": "", "s50vs200": "", "tend": "Sin datos", "cruceMA": "", "cruceMAHace": -1}
+    if s50[-1] is None or e20[-1] is None:
+        return out
+    out["ema20"], out["sma50"] = precio(e20[-1]), precio(s50[-1])
+    out["e20vs50"] = "Alcista" if e20[-1] > s50[-1] else "Bajista"
+    out["pend50"] = "Positiva" if s50[-1] > (s50[-1 - PEND] or s50[-1]) else "Negativa"
+    if s200[-1] is None:
+        return out
+    out["sma200"] = precio(s200[-1])
+    out["dist200"] = round((p / s200[-1] - 1) * 100, 2)
+    out["s50vs200"] = "Alcista" if s50[-1] > s200[-1] else "Bajista"
+    out["pend200"] = "Positiva" if s200[-1] > (s200[-1 - PEND] or s200[-1]) else "Negativa"
+    up50, up200 = out["pend50"] == "Positiva", out["pend200"] == "Positiva"
+    if p > e20[-1] > s50[-1] > s200[-1] and up50 and up200:
+        out["tend"] = "Alcista fuerte"
+    elif p > s50[-1] and p > s200[-1]:
+        out["tend"] = "Alcista"
+    elif p < s50[-1] and p < s200[-1] and not up50 and not up200:
+        out["tend"] = "Bajista"
+    else:
+        out["tend"] = "Lateral"
+    # último cruce de la SMA 50 con la SMA 200
+    for k in range(1, min(CRUCE_MAX, len(c) - 200) + 1):
+        a, b = s50[-k] - s200[-k], s50[-k - 1] - s200[-k - 1]
+        if a > 0 >= b or a < 0 <= b:
+            out["cruceMA"] = "Golden Cross" if a > 0 else "Death Cross"
+            out["cruceMAHace"] = k - 1
+            break
+    return out
+
+
 def procesar(sym, name, ex, d):
     ts = d.get("timestamp") or []
     q = d["indicators"]["quote"][0]
@@ -193,6 +245,7 @@ def procesar(sym, name, ex, d):
         "div": div, "divA": dA, "divB": dB, "divHace": hace,
         "divEstado": ("Confirmada" if hace >= 3 else "En formación") if div != "Ninguna" else "",
         "volusd": round(sum(vol[-20:]) / 20 * c[-1]),
+        **tendencias(c),
         "_ts": t[-N:],
         # últimas 60 ruedas: la tabla usa RSI/MACD; la terminal fundamental también lee las velas
         "s_open": ser(op, dc), "s_high": ser(hi, dc), "s_low": ser(lo, dc), "s_close": ser(c, dc),
