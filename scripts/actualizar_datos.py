@@ -25,7 +25,7 @@ DATA = os.path.join(ROOT, "data")
 N = 60                # ruedas que se guardan para los gráficos
 MAX_DIV_AGE = 10      # divergencias de las últimas 10 jornadas
 MIN_PRICE = 0.5
-THREADS = 12
+THREADS = 16
 UA = {"User-Agent": "Mozilla/5.0 (msf-screener)"}
 
 
@@ -74,8 +74,8 @@ def universo():
 
 
 # ---------- 2. Precios ----------
-def bajar(sym):
-    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{sym.replace('.', '-')}?range=1y&interval=1d"  # Yahoo usa BRK-B
+def bajar(sym, query="range=2y&interval=1d"):
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{sym.replace('.', '-')}?{query}"  # Yahoo usa BRK-B
     for intento in range(3):
         try:
             return json.loads(get(url, 20))["chart"]["result"][0]
@@ -146,6 +146,11 @@ def fmt(x, d):
     return format(round(x, d), "g") if abs(x) >= 1e-12 else "0"
 
 
+def precio(x):
+    """Redondeo según el tamaño: los precios viejos ajustados por splits pueden ser centavos."""
+    return round(x, 4 if x < 1 else 3 if x < 10 else 2)
+
+
 def procesar(sym, name, ex, d):
     ts = d.get("timestamp") or []
     q = d["indicators"]["quote"][0]
@@ -192,15 +197,49 @@ def procesar(sym, name, ex, d):
         # últimas 60 ruedas: la tabla usa RSI/MACD; la terminal fundamental también lee las velas
         "s_open": ser(op, dc), "s_high": ser(hi, dc), "s_low": ser(lo, dc), "s_close": ser(c, dc),
         "s_rsi": ser(R, 0), "s_macd": ser(macd, 3), "s_sig": ser(sg, 3),
-        # Historia completa (1 año) para el gráfico de velas; RSI y MACD se recalculan en el navegador
+        # Historia diaria (2 años) para el gráfico de velas; RSI y MACD se recalculan en el navegador
         "_hist": {
             "d": [x // 86400 for x in t],
-            "o": [float(fmt(x, dc)) for x in op], "h": [float(fmt(x, dc)) for x in hi],
-            "l": [float(fmt(x, dc)) for x in lo], "c": [float(fmt(x, dc)) for x in c],
-            "v": vol,
+            "o": [precio(x) for x in op], "h": [precio(x) for x in hi],
+            "l": [precio(x) for x in lo], "c": [precio(x) for x in c],
+            "v": [int(x) for x in vol],
             "div": [len(c) - N + dA, len(c) - N + dB] if div != "Ninguna" else None,
         },
     }
+
+
+def velas(d):
+    """Velas compactas (d = día unix, o/h/l/c, v) de una respuesta de Yahoo."""
+    ts = d.get("timestamp") or []
+    q = d["indicators"]["quote"][0]
+    n = len(ts)
+    O, H, L, Cl, V = (q.get(k) or [None] * n for k in ("open", "high", "low", "close", "volume"))
+    out = {"d": [], "o": [], "h": [], "l": [], "c": [], "v": []}
+    ultimo = None
+    for t, o, h, l, c, v in zip(ts, O, H, L, Cl, V):
+        if c is None or c <= 0:
+            continue
+        o = o if o else c
+        dia = t // 86400
+        if dia == ultimo:  # Yahoo a veces repite la semana en curso
+            continue
+        ultimo = dia
+        out["d"].append(dia)
+        out["o"].append(precio(o)); out["c"].append(precio(c))
+        out["h"].append(precio(max(x for x in (h, o, c) if x)))
+        out["l"].append(precio(min(x for x in (l, o, c) if x)))
+        out["v"].append(int(v or 0))
+    return out
+
+
+def semanal(sym):
+    """Velas semanales desde el primer día en bolsa."""
+    ahora = int(time.time())
+    for p1 in (-2208988800, 0):  # desde 1900; si Yahoo no acepta fechas previas a 1970, desde 1970
+        d = bajar(sym, f"period1={p1}&period2={ahora}&interval=1wk")
+        if d and d.get("timestamp"):
+            return velas(d)
+    return None
 
 
 def main():
@@ -209,15 +248,33 @@ def main():
     print(f"Universo: {len(U)} acciones", flush=True)
 
     filas, fallas = [], 0
+    os.makedirs(DATA, exist_ok=True)
+    dump = lambda name, obj: json.dump(obj, open(os.path.join(DATA, name), "w", encoding="utf-8"), separators=(",", ":"), ensure_ascii=False)
+    TMP_D, TMP_W = os.path.join(DATA, ".hist_tmp"), os.path.join(DATA, ".hist_w_tmp")
+    for t in (TMP_D, TMP_W):
+        shutil.rmtree(t, ignore_errors=True)
+        os.makedirs(t)
 
     def job(u):
         d = bajar(u[0])
         if d is None:
             return None, True
         try:
-            return procesar(u[0], u[1], u[2], d), False
+            fila = procesar(u[0], u[1], u[2], d)
         except Exception:
             return None, False
+        if not fila:
+            return None, False
+        # velas diarias (2 años) y semanales (desde el inicio) en archivos por acción
+        dump(os.path.join(".hist_tmp", u[0] + ".json"), fila["_hist"])
+        try:
+            w = semanal(u[0])
+            if w and w["d"]:
+                dump(os.path.join(".hist_w_tmp", u[0] + ".json"), w)
+        except Exception:
+            pass
+        del fila["_hist"]
+        return fila, False
 
     with cf.ThreadPoolExecutor(THREADS) as pool:
         for i, (fila, fallo) in enumerate(pool.map(job, U)):
@@ -244,17 +301,17 @@ def main():
     resumen = [{k: v for k, v in f.items() if k not in S and not k.startswith("_")} for f in filas]
     series = [{"sym": f["sym"], **{k: f[k] for k in S}} for f in filas]
 
-    os.makedirs(DATA, exist_ok=True)
-    dump = lambda name, obj: json.dump(obj, open(os.path.join(DATA, name), "w", encoding="utf-8"), separators=(",", ":"), ensure_ascii=False)
     dump("acciones_resumen.json", resumen)
     dump("acciones_series.json", series)
     dump("fechas.json", fechas)
-    # un archivo por acción con su último año de velas
-    hdir = os.path.join(DATA, "hist")
-    shutil.rmtree(hdir, ignore_errors=True)
-    os.makedirs(hdir)
-    for f in filas:
-        dump(os.path.join("hist", f["sym"] + ".json"), f["_hist"])
+    # velas por acción: data/hist (diario, 2 años) y data/hist_w (semanal, desde el inicio en bolsa)
+    vivas = {f["sym"] + ".json" for f in filas}
+    for tmp, final in ((TMP_D, "hist"), (TMP_W, "hist_w")):
+        for fn in os.listdir(tmp):
+            if fn not in vivas:
+                os.remove(os.path.join(tmp, fn))
+        shutil.rmtree(os.path.join(DATA, final), ignore_errors=True)
+        os.rename(tmp, os.path.join(DATA, final))
     dump("meta.json", {"cierre": ultima, "generado": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"), "acciones": len(filas)})
     print(f"Listo: {len(filas)} acciones al cierre del {ultima} en {time.time() - t0:.0f}s")
 

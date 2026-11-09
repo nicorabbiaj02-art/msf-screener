@@ -52,7 +52,15 @@
       <span>Divergencia <span id="d-div">—</span></span>
     </div>
     <p class="d-txt" id="d-txt">—</p>
-    <p class="msf-note lw-hint">Velas diarias del último año con RSI 14 y MACD 12/26/9. Arrastrá para moverte en el tiempo, usá la rueda o pellizcá para hacer zoom, y doble clic en un eje para reajustarlo.</p>
+    <div class="tf-row">
+      <div class="tf-group" role="group" aria-label="Temporalidad">
+        <button type="button" class="tf-btn" data-tf="D">Diario <small>2 años</small></button>
+        <button type="button" class="tf-btn" data-tf="S">Semanal <small>desde el inicio</small></button>
+        <button type="button" class="tf-btn" data-tf="M">Mensual <small>desde el inicio</small></button>
+      </div>
+      <button type="button" class="tf-log" title="Escala logarítmica">Log</button>
+    </div>
+    <p class="msf-note lw-hint">Velas con RSI 14 y MACD 12/26/9. Arrastrá para moverte en el tiempo, usá la rueda o pellizcá para hacer zoom, y doble clic en un eje para reajustarlo. Las divergencias se marcan en el diario.</p>
     <div class="gwrap lw-box" id="graficos"><div class="msf-load">Cargando gráfico…</div></div>
   </section>
 

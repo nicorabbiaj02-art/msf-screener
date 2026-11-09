@@ -196,27 +196,65 @@
     return o;
   }
 
-  function cargarHist(sym) {
-    if (HIST.has(sym)) return HIST.get(sym);
-    const p = fetch('data/hist/' + encodeURIComponent(sym) + '.json' + v).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); });
-    HIST.set(sym, p); p.catch(() => HIST.delete(sym));
+  // Temporalidad del gráfico: D = diario (2 años), S = semanal y M = mensual (desde el inicio en bolsa)
+  const TF = {tf: 'D', log: false};
+  function cargarHist(sym, carpeta = 'hist') {
+    const key = carpeta + '/' + sym;
+    if (HIST.has(key)) return HIST.get(key);
+    const p = fetch('data/' + carpeta + '/' + encodeURIComponent(sym) + '.json' + v).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); });
+    HIST.set(key, p); p.catch(() => HIST.delete(key));
     return p;
   }
+  function mensual(w) {
+    const m = {d: [], o: [], h: [], l: [], c: [], v: []};
+    let key = null;
+    w.d.forEach((d, i) => {
+      const f = new Date(d * 864e5), k = f.getUTCFullYear() * 12 + f.getUTCMonth();
+      if (k !== key) {
+        key = k; m.d.push(Date.UTC(f.getUTCFullYear(), f.getUTCMonth(), 1) / 864e5);
+        m.o.push(w.o[i]); m.h.push(w.h[i]); m.l.push(w.l[i]); m.c.push(w.c[i]); m.v.push(w.v[i]);
+      } else {
+        const j = m.d.length - 1;
+        m.h[j] = Math.max(m.h[j], w.h[i]); m.l[j] = Math.min(m.l[j], w.l[i]); m.c[j] = w.c[i]; m.v[j] += w.v[i];
+      }
+    });
+    return m;
+  }
+  function datosTF(sym) {
+    if (TF.tf === 'D') return cargarHist(sym, 'hist');
+    return cargarHist(sym, 'hist_w').then((w) => TF.tf === 'M' ? mensual(w) : w);
+  }
+  function marcarTF() {
+    $$('.tf-btn').forEach((b) => b.classList.toggle('on', b.dataset.tf === TF.tf));
+    $$('.tf-log').forEach((b) => b.classList.toggle('on', TF.log));
+  }
+  $$('.tf-btn').forEach((b) => b.addEventListener('click', () => {
+    if (TF.tf === b.dataset.tf) return;
+    TF.tf = b.dataset.tf; TF.log = TF.tf !== 'D'; marcarTF();
+    if (CH) CH.key = null; renderGraficos(selRow());
+  }));
+  $$('.tf-log').forEach((b) => b.addEventListener('click', () => {
+    TF.log = !TF.log; marcarTF();
+    if (CH) CH.chart.priceScale('right', 0).applyOptions({mode: TF.log ? 1 : 0});
+  }));
+  marcarTF();
 
   function renderGraficos(r) {
     const box = $('#graficos'); if (!box || !r) return;
-    if (CH && CH.sym === r.sym) return;
-    const sym = r.sym;
-    cargarHist(sym).then((h) => {
-      if (selRow() && selRow().sym !== sym) return; // ya eligieron otra
-      dibujar(box, r, h);
+    const sym = r.sym, key = sym + '|' + TF.tf;
+    if (CH && CH.key === key) return;
+    if (CH) CH.key = key;
+    datosTF(sym).then((h) => {
+      if ((selRow() && selRow().sym !== sym) || key !== sym + '|' + TF.tf) return; // ya eligieron otra
+      dibujar(box, r, h, key);
     }).catch(() => {
       if (CH) { CH.chart.remove(); CH = null; }
-      box.replaceChildren(el('div', 'msf-load msf-err', 'No se pudo cargar la historia de ' + sym + '.'));
+      box.replaceChildren(el('div', 'msf-load msf-err', 'No se pudo cargar la historia de ' + sym + (TF.tf === 'D' ? '' : ' (semanal)') + '.'));
     });
   }
 
-  function dibujar(box, r, h) {
+  function dibujar(box, r, h, key) {
+    const tf = TF.tf;
     const LW = window.LightweightCharts;
     if (CH) { CH.chart.remove(); CH = null; }
     box.replaceChildren();
@@ -227,6 +265,7 @@
     const M = e12.map((a, i) => a != null && e26[i] != null ? a - e26[i] : null);
     const st = M.findIndex((x) => x != null), G = emaJs(M.map((x) => x ?? 0), 9, st);
     const pf = r.price < 1 ? 4 : 2;
+    const fmtP = (p) => num.format(',.' + (Math.abs(p) < 1 ? 4 : Math.abs(p) < 10 ? 3 : 2) + 'f')(p);
 
     const chart = LW.createChart(area, {
       autoSize: true,
@@ -234,13 +273,13 @@
         panes: {separatorColor: C.line, separatorHoverColor: 'rgba(34,211,238,0.35)', enableResize: true}, attributionLogo: true},
       grid: {vertLines: {color: C.grid}, horzLines: {color: C.grid}},
       rightPriceScale: {borderColor: C.line},
-      timeScale: {borderColor: C.line, rightOffset: 4, barSpacing: 8, minBarSpacing: 2},
+      timeScale: {borderColor: C.line, rightOffset: 4, barSpacing: 8, minBarSpacing: 0.3},
       crosshair: {mode: LW.CrosshairMode.Normal, vertLine: {color: 'rgba(150,190,240,0.5)', labelBackgroundColor: '#0b1d44'}, horzLine: {color: 'rgba(150,190,240,0.5)', labelBackgroundColor: '#0b1d44'}},
-      localization: {locale: 'es-AR', priceFormatter: (p) => num.format(',.' + pf + 'f')(p)},
+      localization: {locale: 'es-AR', priceFormatter: fmtP},
     });
     // Panel 0: velas + volumen
     const velas = chart.addSeries(LW.CandlestickSeries, {upColor: C.up, downColor: C.down, borderUpColor: C.up, borderDownColor: C.down, wickUpColor: C.up, wickDownColor: C.down,
-      priceFormat: {type: 'price', precision: pf, minMove: pf === 4 ? 0.0001 : 0.01}});
+      priceFormat: {type: 'price', precision: 4, minMove: 0.0001}});
     velas.setData(T.map((t, i) => ({time: t, open: h.o[i], high: h.h[i], low: h.l[i], close: h.c[i]})));
     const vol = chart.addSeries(LW.HistogramSeries, {priceScaleId: 'vol', priceFormat: {type: 'volume'}, lastValueVisible: false, priceLineVisible: false});
     chart.priceScale('vol').applyOptions({scaleMargins: {top: 0.82, bottom: 0}, visible: false});
@@ -265,7 +304,7 @@
 
     // Divergencia: línea sobre mínimos/máximos y sobre el RSI, con marcador
     const div = h.div;
-    if (div && r.div !== 'Ninguna' && div[0] >= 0 && div[1] < n) {
+    if (tf === 'D' && div && r.div !== 'Ninguna' && div[0] >= 0 && div[1] < n) {
       const [a, b] = div, alc = r.div === 'Alcista', col = alc ? C.up : C.down, ext = alc ? h.l : h.h;
       const opt = {color: col, lineWidth: 3, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false, pointMarkersVisible: true};
       chart.addSeries(LW.LineSeries, opt, 0).setData([{time: T[a], value: ext[a]}, {time: T[b], value: ext[b]}]);
@@ -277,11 +316,15 @@
     const panes = chart.panes();
     [5, 1.7, 1.9].forEach((f, k) => { if (panes[k] && panes[k].setStretchFactor) panes[k].setStretchFactor(f); });
 
-    // Arranca mostrando los últimos ~6 meses; se puede arrastrar para ver todo el año
-    chart.timeScale().setVisibleLogicalRange({from: Math.max(0, n - 125), to: n + 3});
+    // Escala logarítmica (útil para ver décadas de historia)
+    if (TF.log) chart.priceScale('right', 0).applyOptions({mode: 1});
+    // Vista inicial: diario 6 meses, semanal 10 años, mensual toda la historia
+    if (tf === 'M') chart.timeScale().fitContent();
+    else chart.timeScale().setVisibleLogicalRange({from: Math.max(0, n - (tf === 'D' ? 125 : 520)), to: n + 3});
 
     // Leyenda con OHLC, RSI y MACD bajo el cursor
-    const fecha = (t) => fLong(new Date(t * 1000));
+    const fMes = es.utcFormat('%B %Y');
+    const fecha = (t) => tf === 'M' ? fMes(new Date(t * 1000)) : (tf === 'S' ? 'Semana del ' : '') + fLong(new Date(t * 1000));
     const fill = (i) => {
       const up = h.c[i] >= h.o[i], col = up ? C.up : C.down;
       legend.replaceChildren();
@@ -289,7 +332,7 @@
       row1.append(el('b', 'lw-sym', r.sym), el('span', 'lw-date', fecha(T[i])));
       const row2 = el('div', 'lw-row');
       [['A', h.o[i]], ['Máx', h.h[i]], ['Mín', h.l[i]], ['C', h.c[i]]].forEach(([k, val]) => {
-        const s = el('span', null, k + ' '); s.append(Object.assign(el('b', null, num.format(',.' + pf + 'f')(val)), {style: 'color:' + col})); row2.append(s);
+        const s = el('span', null, k + ' '); s.append(Object.assign(el('b', null, fmtP(val)), {style: 'color:' + col})); row2.append(s);
       });
       const row3 = el('div', 'lw-row');
       if (R[i] != null) { const s = el('span', null, 'RSI '); s.append(Object.assign(el('b', null, dec(R[i], 1)), {style: 'color:' + C.sky})); row3.append(s); }
@@ -303,7 +346,7 @@
     const idx = new Map(T.map((t, i) => [t, i]));
     chart.subscribeCrosshairMove((p) => { fill(p && p.time != null && idx.has(p.time) ? idx.get(p.time) : n - 1); });
 
-    CH = {chart, sym: r.sym};
+    CH = {chart, sym: r.sym, key};
   }
 
   // ---------- Interacción ----------
