@@ -309,8 +309,8 @@
     const LW = window.LightweightCharts;
     if (CH) { CH.chart.remove(); CH = null; }
     box.replaceChildren();
-    const legend = el('div', 'lw-legend'); const area = el('div', 'lw-area');
-    box.append(area, legend);
+    const area = el('div', 'lw-area');
+    box.append(area);
     const n = h.c.length, T = h.d.map((d) => d * 86400);
     const R = rsiJs(h.c), e12 = emaJs(h.c, 12, 0), e26 = emaJs(h.c, 26, 0);
     const M = e12.map((a, i) => a != null && e26[i] != null ? a - e26[i] : null);
@@ -380,31 +380,6 @@
     if (tf === 'M') chart.timeScale().fitContent();
     else chart.timeScale().setVisibleLogicalRange({from: Math.max(0, n - (tf === 'D' ? 125 : 520)), to: n + 3});
 
-    // Leyenda con OHLC, RSI y MACD bajo el cursor
-    const fMes = es.utcFormat('%B %Y');
-    const fecha = (t) => tf === 'M' ? fMes(new Date(t * 1000)) : (tf === 'S' ? 'Semana del ' : '') + fLong(new Date(t * 1000));
-    const fill = (i) => {
-      const up = h.c[i] >= h.o[i], col = up ? C.up : C.down;
-      legend.replaceChildren();
-      const row1 = el('div', 'lw-row');
-      row1.append(el('b', 'lw-sym', r.sym), el('span', 'lw-date', fecha(T[i])));
-      const row2 = el('div', 'lw-row');
-      [['A', h.o[i]], ['Máx', h.h[i]], ['Mín', h.l[i]], ['C', h.c[i]]].forEach(([k, val]) => {
-        const s = el('span', null, k + ' '); s.append(Object.assign(el('b', null, fmtP(val)), {style: 'color:' + col})); row2.append(s);
-      });
-      const rowMA = el('div', 'lw-row');
-      MA.forEach(([k, arr, col]) => { if (arr[i] != null) { const s = el('span', null, k + ' '); s.append(Object.assign(el('b', null, fmtP(arr[i])), {style: 'color:' + col})); rowMA.append(s); } });
-      const row3 = el('div', 'lw-row');
-      if (R[i] != null) { const s = el('span', null, 'RSI '); s.append(Object.assign(el('b', null, dec(R[i], 1)), {style: 'color:' + C.sky})); row3.append(s); }
-      if (M[i] != null && G[i] != null) {
-        const s = el('span', null, 'MACD '); s.append(Object.assign(el('b', null, num.format('.3~f')(M[i])), {style: 'color:' + C.cyan})); row3.append(s);
-        const s2 = el('span', null, 'Señal '); s2.append(Object.assign(el('b', null, num.format('.3~f')(G[i])), {style: 'color:' + C.amber})); row3.append(s2);
-      }
-      legend.append(row1, row2, rowMA, row3);
-    };
-    fill(n - 1);
-    const idx = new Map(T.map((t, i) => [t, i]));
-    chart.subscribeCrosshairMove((p) => { fill(p && p.time != null && idx.has(p.time) ? idx.get(p.time) : n - 1); });
 
     CH = {chart, sym: r.sym, key};
   }
