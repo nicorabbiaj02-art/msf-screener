@@ -242,12 +242,19 @@
 
   // Temporalidad del gráfico: D = diario (2 años), S = semanal y M = mensual (desde el inicio en bolsa)
   const TF = {tf: 'D', log: false};
+  // Las velas vienen agrupadas en 128 paquetes por carpeta (mismo cálculo que paquete() en el script)
+  function paquete(sym) {
+    let h = 0;
+    for (const ch of sym) h = (h * 31 + ch.charCodeAt(0)) % 1000003;
+    return String(h % 128).padStart(3, '0');
+  }
   function cargarHist(sym, carpeta = 'hist') {
-    const key = carpeta + '/' + sym;
-    if (HIST.has(key)) return HIST.get(key);
-    const p = fetch('data/' + carpeta + '/' + encodeURIComponent(sym) + '.json' + v).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); });
-    HIST.set(key, p); p.catch(() => HIST.delete(key));
-    return p;
+    const key = carpeta + '/' + paquete(sym);
+    if (!HIST.has(key)) {
+      const p = fetch('data/' + key + '.json' + v).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); });
+      HIST.set(key, p); p.catch(() => HIST.delete(key));
+    }
+    return HIST.get(key).then((g) => { if (!g[sym]) throw new Error('sin datos'); return g[sym]; });
   }
   function mensual(w) {
     const m = {d: [], o: [], h: [], l: [], c: [], v: []};

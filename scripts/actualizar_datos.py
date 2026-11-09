@@ -295,6 +295,17 @@ def semanal(sym):
     return None
 
 
+PAQUETES = 128
+
+
+def paquete(sym):
+    """Número de paquete de un ticker (la página calcula lo mismo en assets/app.js)."""
+    h = 0
+    for ch in sym:
+        h = (h * 31 + ord(ch)) % 1000003
+    return h % PAQUETES
+
+
 def main():
     t0 = time.time()
     U = universo()
@@ -357,14 +368,23 @@ def main():
     dump("acciones_resumen.json", resumen)
     dump("acciones_series.json", series)
     dump("fechas.json", fechas)
-    # velas por acción: data/hist (diario, 2 años) y data/hist_w (semanal, desde el inicio en bolsa)
-    vivas = {f["sym"] + ".json" for f in filas}
+    # velas agrupadas en paquetes: data/hist/NNN.json (diario, 2 años) y data/hist_w/NNN.json
+    # (semanal, desde el inicio en bolsa). Cada paquete es {TICKER: velas}; el número sale de paquete(TICKER).
+    # Se agrupan porque GitHub Pages tarda demasiado en publicar un archivo por acción.
+    vivas = {f["sym"] for f in filas}
     for tmp, final in ((TMP_D, "hist"), (TMP_W, "hist_w")):
+        grupos = {}
         for fn in os.listdir(tmp):
-            if fn not in vivas:
-                os.remove(os.path.join(tmp, fn))
-        shutil.rmtree(os.path.join(DATA, final), ignore_errors=True)
-        os.rename(tmp, os.path.join(DATA, final))
+            sym = fn[:-5]
+            if sym in vivas:
+                with open(os.path.join(tmp, fn), encoding="utf-8") as fh:
+                    grupos.setdefault(paquete(sym), {})[sym] = json.load(fh)
+        shutil.rmtree(tmp, ignore_errors=True)
+        destino = os.path.join(DATA, final)
+        shutil.rmtree(destino, ignore_errors=True)
+        os.makedirs(destino)
+        for k, g in grupos.items():
+            dump(os.path.join(final, f"{k:03d}.json"), g)
     dump("meta.json", {"cierre": ultima, "generado": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"), "acciones": len(filas)})
     print(f"Listo: {len(filas)} acciones al cierre del {ultima} en {time.time() - t0:.0f}s")
 
