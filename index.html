@@ -23,7 +23,10 @@
       <h1>Screener RSI + MACD — Acciones USA</h1>
       <p class="msf-sub"><b id="total">—</b> acciones de NYSE, NASDAQ y AMEX. Tocá una fila para ver sus gráficos y abrirla en TradingView.</p>
     </div>
-    <span class="msf-chip">Cierre del&nbsp;<b class="fecha">—</b></span>
+    <div class="msf-chips">
+      <span class="msf-chip msf-live" id="live-chip" hidden><span id="live-txt">—</span></span>
+      <span class="msf-chip">Señales al cierre del&nbsp;<b class="fecha">—</b></span>
+    </div>
   </header>
 
   <section class="msf-tiles">
@@ -163,7 +166,7 @@
       <dt>Medias móviles</dt><dd>EMA 20 (corto plazo), SMA 50 (mediano) y SMA 200 (largo) sobre cierres diarios. La pendiente compara la media de hoy con la de hace 10 ruedas. Golden Cross: la SMA 50 cruza hacia arriba la SMA 200; Death Cross: la cruza hacia abajo (se muestran los de las últimas 20 ruedas).</dd>
       <dt>Tendencia</dt><dd>Alcista fuerte: precio &gt; EMA 20 &gt; SMA 50 &gt; SMA 200 con las dos pendientes positivas. Alcista: precio por encima de la SMA 50 y la SMA 200 sin alineación completa. Bajista: precio debajo de la SMA 50 y la SMA 200 con pendientes negativas. Lateral: el resto, medias sin dirección clara. Hacen falta 200 ruedas de historia.</dd>
       <dt>Universo</dt><dd>Acciones comunes y ADRs listados en NYSE, NASDAQ y AMEX según los directorios de Nasdaq Trader, sin ETFs, warrants, units ni preferidas; precio ≥ US$0,50 y al menos 100 ruedas de historia.</dd>
-      <dt>Datos</dt><dd>Cierres diarios de Yahoo Finance al <span class="fecha">—</span>, actualizados automáticamente cada día hábil después del cierre. No es cotización en tiempo real. Material educativo, no es recomendación de inversión.</dd>
+      <dt>Datos</dt><dd>Precio y variación del día en vivo durante la rueda (Yahoo Finance, se actualizan cada minuto para las acciones que estás viendo y la elegida; pueden tener algunos minutos de demora). RSI, MACD, divergencias, medias y tendencia se calculan con los cierres diarios al <span class="fecha">—</span> y se actualizan solos cada día hábil después del cierre. Material educativo, no es recomendación de inversión.</dd>
     </dl>
   </details>
   <p class="msf-foot"><b>MSF</b> · Mercados Sin Filtro · Material educativo</p>

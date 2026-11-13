@@ -191,3 +191,10 @@ body{padding:clamp(8px,2.5vw,28px)}
 .tchip.g{color:var(--msf-up)}.tchip.b{color:var(--msf-down)}
 @media (max-width:640px){.ma-vals{grid-template-columns:1fr}}
 .msf .tend-tab tr{cursor:default}.msf .tend-tab tr:hover{background:transparent}
+.msf-chips{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+.msf-live::before{background:var(--msf-muted);box-shadow:none}
+.msf-live.on{border-color:rgba(52,211,153,.55)}
+.msf-live.on::before{background:#34d399;box-shadow:0 0 10px #34d399;animation:msfpulse 1.6s ease-in-out infinite}
+@keyframes msfpulse{50%{opacity:.35}}
+.msf td.live{color:#fff}
+@media (max-width:640px){.msf-chips{align-items:flex-start}}

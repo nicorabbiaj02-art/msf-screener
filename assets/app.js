@@ -119,8 +119,9 @@
       const c0 = td(); c0.append(el('span', 'tk', r.sym));
       if (UNIV && UNIV.has(r.sym)) { const f = el('a', 'fchip', 'F'); f.href = fundUrl(r.sym); f.target = '_blank'; f.rel = 'noopener'; f.title = 'Ver análisis fundamental de ' + r.sym; c0.append(f); }
       c0.append(el('span', 'nm', r.name));
-      td('n').textContent = price(r.price);
-      td('n ' + (r.chg >= 0 ? 'up' : 'down')).textContent = pct(r.chg);
+      const lv = vivo(r);
+      td('n' + (lv.live ? ' live' : '')).textContent = price(lv.p);
+      td('n ' + (lv.chg >= 0 ? 'up' : 'down')).textContent = pct(lv.chg);
       td('n').append(el('span', 'rsi-chip ' + (r.rsi < 30 ? 'rsi-lo' : r.rsi > 70 ? 'rsi-hi' : ''), dec(r.rsi, 1)));
       const s = S.ser && S.ser.get(r.sym);
       const cr = td(), cm = td();
@@ -152,8 +153,7 @@
     const r = selRow(); if (!r) return;
     $('#d-sym').textContent = r.sym;
     $('#d-name').textContent = r.name + ' · ' + r.ex;
-    $('#d-price').textContent = price(r.price);
-    const ch = $('#d-chg'); ch.textContent = pct(r.chg); ch.className = r.chg >= 0 ? 'up' : 'down';
+    pintarPrecio(r);
     const ri = $('#d-rsi'); ri.textContent = dec(r.rsi, 1); ri.className = r.rsi < 30 ? 'rsi-lo' : r.rsi > 70 ? 'rsi-hi' : '';
     $('#d-macd').textContent = num.format('.3~f')(r.macd);
     $('#d-sig').textContent = num.format('.3~f')(r.signal);
@@ -381,12 +381,13 @@
     else chart.timeScale().setVisibleLogicalRange({from: Math.max(0, n - (tf === 'D' ? 125 : 520)), to: n + 3});
 
 
-    CH = {chart, sym: r.sym, key};
+    CH = {chart, sym: r.sym, key, tf, velas, lastT: T[n - 1]};
+    aplicarVela();
   }
 
   // ---------- Interacción ----------
   function select(sym) {
-    S.sel = sym;
+    S.sel = sym; pedirVivo(300);
     renderDetalle();
     $$('#filas tr').forEach((tr) => tr.classList.toggle('sel', tr.dataset.key === sym));
     const det = $('#detalle');
@@ -394,7 +395,7 @@
     det.classList.remove('flash'); void det.offsetWidth; det.classList.add('flash');
     try { history.replaceState(null, '', '#' + sym); } catch (e) { /* nada */ }
   }
-  function redraw() { S.limit = 100; renderLista(); if (!S.sel) renderDetalle(); }
+  function redraw() { S.limit = 100; renderLista(); if (!S.sel) renderDetalle(); pedirVivo(); }
 
   $$('.f-q').forEach((inp) => inp.addEventListener('input', () => { S.q = inp.value; redraw(); }));
   $$('.f-sel').forEach((sel) => sel.addEventListener('change', () => { S[sel.dataset.k] = sel.value; redraw(); }));
@@ -403,13 +404,73 @@
     $$('.f-q, .f-sel').forEach((e) => { e.value = ''; });
     redraw();
   }));
-  $$('.mas').forEach((b) => b.addEventListener('click', () => { S.limit += 100; renderLista(); }));
+  $$('.mas').forEach((b) => b.addEventListener('click', () => { S.limit += 100; renderLista(); pedirVivo(); }));
   $$('th[data-k]').forEach((th) => th.querySelector('button').addEventListener('click', () => {
     const k = th.dataset.k;
     if (S.sort === k) S.dir = -S.dir; else { S.sort = k; S.dir = (k === 'sym' || k === 'dias' || k === 'divHace') ? 1 : -1; }
     $$('th[data-k]').forEach((t) => { if (t.dataset.k === S.sort) t.setAttribute('aria-sort', S.dir > 0 ? 'ascending' : 'descending'); else t.removeAttribute('aria-sort'); });
     redraw();
   }));
+
+  // ---------- Precios en vivo (Vercel Function /api/precios, datos de Yahoo) ----------
+  const API = /vercel\.app$/.test(location.hostname) ? '/api/precios' : 'https://msf-screener.vercel.app/api/precios';
+  const LIVE = {q: new Map(), vela: null, at: 0};
+  function vivo(r) {
+    const x = LIVE.q.get(r.sym);
+    if (!x || !x.p) return {p: r.price, chg: r.chg, live: false};
+    return {p: x.p, chg: x.pc ? (x.p / x.pc - 1) * 100 : r.chg, live: true};
+  }
+  function pintarPrecio(r) {
+    const lv = vivo(r);
+    $('#d-price').textContent = price(lv.p);
+    const ch = $('#d-chg'); ch.textContent = pct(lv.chg); ch.className = lv.chg >= 0 ? 'up' : 'down';
+  }
+  function aplicarVela() {
+    const v = LIVE.vela;
+    if (!CH || CH.tf !== 'D' || !v || v.sym !== CH.sym) return;
+    const time = v.d * 86400;
+    if (time < CH.lastT) return;
+    try { CH.velas.update({time, open: v.o, high: v.h, low: v.l, close: v.c}); } catch (e) { /* nada */ }
+  }
+  const NY = new Intl.DateTimeFormat('en-US', {timeZone: 'America/New_York', weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23'});
+  function mercadoAbierto() {
+    const p = Object.fromEntries(NY.formatToParts(new Date()).map((x) => [x.type, x.value]));
+    if (p.weekday === 'Sat' || p.weekday === 'Sun') return false;
+    const m = +p.hour * 60 + +p.minute;
+    return m >= 9 * 60 + 30 && m < 16 * 60;
+  }
+  const hhmm = new Intl.DateTimeFormat('es-AR', {timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit'});
+  function pintarChip() {
+    const c = $('#live-chip'); if (!c) return;
+    if (!LIVE.at) { c.hidden = true; return; }
+    c.hidden = false;
+    const abierto = mercadoAbierto();
+    c.classList.toggle('on', abierto);
+    $('#live-txt').textContent = (abierto ? 'En vivo · ' : 'Último precio · ') + hhmm.format(new Date(LIVE.at * 1000)) + ' (hora argentina)';
+  }
+  let enCurso = false;
+  async function refrescarVivo() {
+    if (!S.rows || enCurso) return;
+    enCurso = true;
+    try {
+      const sel = selRow();
+      const syms = [...new Set([...(sel ? [sel.sym] : []), ...filtered().slice(0, Math.min(S.limit, 119)).map((r) => r.sym)])].slice(0, 120);
+      const url = API + '?s=' + encodeURIComponent(syms.join(',')) + (sel ? '&vela=' + encodeURIComponent(sel.sym) : '');
+      const d = await fetch(url).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); });
+      let ult = 0;
+      Object.entries(d.quotes || {}).forEach(([k, x]) => { LIVE.q.set(k, x); ult = Math.max(ult, x.t || 0); });
+      if (d.vela) LIVE.vela = d.vela;
+      if (ult) LIVE.at = ult;
+      renderLista();
+      const r = selRow(); if (r) pintarPrecio(r);
+      aplicarVela(); pintarChip();
+    } catch (e) { console.warn('Precios en vivo no disponibles:', e); }
+    finally { enCurso = false; }
+  }
+  let tVivo;
+  function pedirVivo(ms = 600) { clearTimeout(tVivo); tVivo = setTimeout(refrescarVivo, ms); }
+  setInterval(() => { if (mercadoAbierto() && !document.hidden) refrescarVivo(); }, 60000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && mercadoAbierto()) pedirVivo(100); });
 
   // ---------- Carga ----------
   const v = '?v=' + Math.floor(Date.now() / 3.6e6); // evita caché viejo, cambia cada hora
@@ -418,7 +479,7 @@
     S.rows = rows; S.fechas = fechas;
     const h = decodeURIComponent(location.hash.slice(1)).toUpperCase();
     if (h && rows.some((r) => r.sym === h)) S.sel = h;
-    renderResumen(); renderLista(); renderDetalle();
+    renderResumen(); renderLista(); renderDetalle(); pedirVivo(50);
     if (S.sel) requestAnimationFrame(() => $('#detalle').scrollIntoView({block: 'start'})); // llegó con #TICKER (p. ej. desde la terminal fundamental)
     return get('data/acciones_series.json');
   }).then((ser) => {
